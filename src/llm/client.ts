@@ -94,30 +94,56 @@ class GeminiLLMClient implements LLMClient {
 }
 
 /**
+ * Auto-detect LLM provider from API key format.
+ */
+function detectProvider(apiKey: string): 'anthropic' | 'openai' | 'gemini' {
+  if (apiKey.startsWith('sk-ant-')) return 'anthropic';
+  if (apiKey.startsWith('sk-')) return 'openai';
+  if (apiKey.startsWith('AIza')) return 'gemini';
+  return 'anthropic'; // fallback
+}
+
+const DEFAULT_MODELS: Record<string, string> = {
+  anthropic: 'claude-sonnet-4-20250514',
+  openai: 'gpt-4o-mini',
+  gemini: 'gemini-2.0-flash',
+};
+
+/**
  * Create an LLM client. Resolves API key in this order:
  * 1. Explicit config.apiKey (from --llm-key flag or config file)
  * 2. HERON_LLM_API_KEY env var
- * 3. Stored credentials from `heron login` (~/.heron/auth.json)
+ *
+ * If provider is not explicitly set, auto-detects from API key format.
  */
 export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
   const apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
 
   if (!apiKey) {
     throw new Error(
-      `No API key found for ${config.provider}. Use one of:\n` +
+      `No API key found. Use one of:\n` +
       `  1. --llm-key <key>\n` +
       `  2. HERON_LLM_API_KEY env var`,
     );
   }
 
-  switch (config.provider) {
+  // Auto-detect provider if using default
+  const detected = detectProvider(apiKey);
+  const provider = config.provider === 'anthropic' && !process.env.HERON_LLM_PROVIDER
+    ? detected
+    : config.provider;
+  const model = provider !== config.provider
+    ? DEFAULT_MODELS[provider]
+    : config.model;
+
+  switch (provider) {
     case 'anthropic':
-      return new AnthropicLLMClient(apiKey, config.model);
+      return new AnthropicLLMClient(apiKey, model);
     case 'openai':
-      return new OpenAILLMClient(apiKey, config.model);
+      return new OpenAILLMClient(apiKey, model);
     case 'gemini':
-      return new GeminiLLMClient(apiKey, config.model);
+      return new GeminiLLMClient(apiKey, model);
     default:
-      throw new Error(`Unknown LLM provider: ${config.provider}`);
+      throw new Error(`Unknown LLM provider: ${provider}`);
   }
 }

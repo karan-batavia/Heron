@@ -250,20 +250,20 @@ verify payment status.
 
 ## LLM Provider
 
-Heron uses an LLM to analyze agent responses and generate reports. Here are examples with the most popular providers:
+Heron auto-detects the provider from your API key format — just set the key and go:
 
 ```bash
-# Anthropic (default)
+# Anthropic (sk-ant-xxx → detected automatically)
 HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
 
-# OpenAI
-HERON_LLM_API_KEY=sk-xxx npx heron-ai serve --llm-provider openai --llm-model gpt-4o-mini
+# OpenAI (sk-xxx → detected automatically)
+HERON_LLM_API_KEY=sk-xxx npx heron-ai serve
 
-# Gemini
-HERON_LLM_API_KEY=AIza... npx heron-ai serve --llm-provider gemini --llm-model gemini-2.0-flash
+# Gemini (AIza... → detected automatically)
+HERON_LLM_API_KEY=AIza... npx heron-ai serve
 ```
 
-Use `--llm-provider` and `--llm-model` to pick any model you prefer.
+Override with `--llm-provider` and `--llm-model` if needed.
 
 ## Reference
 
