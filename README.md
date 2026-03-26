@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/jonydony/Heron/main/.github/heron-logo.svg" alt="Heron" width="120" />
-</p>
-
 <h1 align="center">Heron</h1>
 
 <p align="center">
