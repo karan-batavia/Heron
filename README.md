@@ -168,15 +168,9 @@ Structured interview across 5 categories:
 
 After core questions, Heron generates smart follow-ups to dig deeper.
 
-## LLM Providers
+## LLM Provider
 
-Heron uses an LLM under the hood to analyze agent responses. It supports three providers:
-
-| Provider | Model | API Key |
-|----------|-------|---------|
-| Anthropic | `claude-sonnet-4-20250514` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
-| OpenAI | `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Gemini | `gemini-2.0-flash` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+Heron uses an LLM under the hood to analyze agent responses and generate reports. It works with **any LLM** that has an API — just set your API key and provider:
 
 ```bash
 # Anthropic (default)
@@ -188,6 +182,8 @@ HERON_LLM_API_KEY=sk-xxx npx heron-ai serve --llm-provider openai --llm-model gp
 # Gemini
 HERON_LLM_API_KEY=AIza... npx heron-ai serve --llm-provider gemini --llm-model gemini-2.0-flash
 ```
+
+Use `--llm-provider` and `--llm-model` to pick any model you prefer. Cheaper models like `gpt-4o-mini` or `gemini-2.0-flash` work great for this task.
 
 ## Server Mode
 
