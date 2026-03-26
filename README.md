@@ -83,22 +83,92 @@ Then point your agent's base URL to `http://localhost:3700/v1` — it works as a
 
 Heron acts as a **checkpoint** that any security engineer can deploy in front of AI agents:
 
+<table>
+<tr>
+<td width="50%">
+
+**Step 1 — Deploy Heron**
+
+Security engineer starts Heron in one command.
+
+</td>
+<td width="50%">
+
+```bash
+$ npx heron-ai serve
+
+Listening on http://0.0.0.0:3700
+Ready — agents can connect now
 ```
-Step 1: Security deploys Heron     Step 2: Agent connects
 
-$ npx heron-ai serve               OPENAI_BASE_URL=http://heron:3700/v1
-                                    your-agent start
-Listening on :3700
-Ready — agents can connect now      "Hello, I process invoices..."
+</td>
+</tr>
+<tr>
+<td>
 
-Step 3: Heron interviews           Step 4: Report generated
+**Step 2 — Agent connects**
 
-"What systems do you access?"       # Agent Audit Report
-"SAP, HubSpot, Stripe..."          Risk Level: HIGH
-"Do you need write access?"
-"Yes, to update invoices..."        Excessive: Full Stripe API access
-"What happens if it fails?"         Recommendation: Use read-only key
+Point any agent's base URL to Heron. No SDK, no code changes — it speaks OpenAI-compatible API.
+
+</td>
+<td>
+
+```bash
+OPENAI_BASE_URL=http://heron:3700/v1 \
+  your-agent start
+
+# Agent: "Hello, I process invoices..."
 ```
+
+</td>
+</tr>
+<tr>
+<td>
+
+**Step 3 — Heron interviews**
+
+Structured questions about purpose, data access, permissions, and writes.
+
+</td>
+<td>
+
+```
+Heron: "What systems do you access?"
+Agent: "SAP, HubSpot, Stripe..."
+
+Heron: "Do you need write access?"
+Agent: "Yes, to update invoices..."
+
+Heron: "What happens if it fails?"
+Agent: "Duplicate charges could..."
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+**Step 4 — Report generated**
+
+Markdown audit report with risk level, excessive permissions, and actionable recommendations.
+
+</td>
+<td>
+
+```markdown
+# Agent Audit Report
+Risk Level: HIGH
+
+⚠ Excessive: Full Stripe API access
+⚠ Excessive: HubSpot admin rights
+
+→ Use Stripe read-only API key
+→ Restrict HubSpot to invoices only
+```
+
+</td>
+</tr>
+</table>
 
 ### Two Modes
 
