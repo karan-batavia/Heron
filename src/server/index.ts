@@ -263,6 +263,130 @@ async function handleGetReport(
   res.end(session.report);
 }
 
+// ─── Shared UI components ────────────────────────────────────────────────
+
+const HERON_LOGO = `<svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="50" cy="50" r="48" fill="#0f172a"/>
+  <path d="M55 20 C55 20 58 18 62 20 C62 20 60 28 58 32 C56 36 54 38 54 42 C54 46 56 48 56 48 L52 50 C52 50 48 46 48 40 C48 34 50 28 55 20Z" fill="#38bdf8"/>
+  <circle cx="59" cy="24" r="1.5" fill="#fff"/>
+  <path d="M54 42 C54 42 52 50 50 56 C48 62 44 72 44 78 L42 78 C42 72 44 62 48 54 C50 48 52 44 54 42Z" fill="#38bdf8"/>
+  <path d="M54 44 C56 48 60 52 62 58 C64 64 62 72 62 78 L60 78 C60 72 62 64 60 58 C58 52 56 48 54 44Z" fill="#38bdf8" opacity="0.7"/>
+  <line x1="44" y1="78" x2="44" y2="88" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="42" y1="78" x2="40" y2="88" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="62" y1="78" x2="62" y2="88" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="60" y1="78" x2="58" y2="88" stroke="#38bdf8" stroke-width="2"/>
+</svg>`;
+
+const SHARED_CSS = `
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #1a1a1a; background: #fafbfc; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; }
+
+  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .header h1 { font-size: 1.4rem; margin: 0; }
+  .header-sub { color: #6b7280; margin: 0 0 32px 44px; font-size: 0.95em; }
+  .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.8em; text-align: center; }
+  .footer a { color: #9ca3af; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+  .badge-interviewing { background: #fef3c7; color: #92400e; }
+  .badge-analyzing { background: #dbeafe; color: #1e40af; }
+  .badge-complete { background: #d1fae5; color: #065f46; }
+  .badge-error { background: #fee2e2; color: #991b1b; }
+  .risk { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 700; }
+  .risk-low { background: #d1fae5; color: #065f46; }
+  .risk-medium { background: #fef3c7; color: #92400e; }
+  .risk-high { background: #fee2e2; color: #991b1b; }
+  .risk-critical { background: #991b1b; color: #fff; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+  th { background: #f9fafb; font-weight: 600; font-size: 0.85em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.03em; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+  tbody tr:hover { background: #f0f7ff; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .empty { color: #6b7280; padding: 40px 0; text-align: center; }
+
+  .qa { margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .q { font-weight: 600; margin-bottom: 6px; line-height: 1.5; }
+  .a { color: #374151; white-space: pre-wrap; line-height: 1.5; }
+  .cat { display: inline-block; background: #eff6ff; padding: 1px 8px; border-radius: 3px; font-size: 0.7em; color: #3b82f6; font-weight: 600; margin-right: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .report-rendered { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 32px; line-height: 1.6; }
+  .report-rendered h1 { font-size: 1.5em; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }
+  .report-rendered h2 { font-size: 1.2em; margin-top: 28px; border-bottom: 1px solid #f0f0f0; padding-bottom: 6px; color: #1e293b; }
+  .report-rendered table { margin: 12px 0; font-size: 0.9em; }
+  .report-rendered p { margin: 8px 0; }
+  .report-rendered strong { color: #0f172a; }
+  .report-rendered hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+  .report-rendered ol, .report-rendered ul { padding-left: 24px; }
+  .report-rendered li { margin: 4px 0; }
+  .report-rendered details { margin-top: 16px; }
+  .report-rendered summary { cursor: pointer; font-weight: 600; color: #2563eb; }
+
+  .btn { display: inline-block; background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.9em; font-weight: 500; }
+  .btn:hover { background: #1d4ed8; text-decoration: none; }
+  .btn-outline { background: transparent; color: #2563eb; border: 1px solid #2563eb; }
+  .btn-outline:hover { background: #eff6ff; }
+  .report-actions { margin-bottom: 20px; display: flex; gap: 10px; }
+  .meta { color: #6b7280; margin-bottom: 24px; }
+  .analyzing { color: #1e40af; font-style: italic; }
+  .error-msg { color: #991b1b; background: #fee2e2; padding: 12px; border-radius: 6px; }
+`;
+
+function markdownToHtml(md: string): string {
+  let html = escapeHtml(md);
+
+  // Horizontal rules
+  html = html.replace(/^---$/gm, '<hr>');
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold
+  html = html.replace(/\*\*\[([A-Z]+)\]\s*(.+?)\*\*/g, '<strong>[$1] $2</strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Details/summary
+  html = html.replace(/&lt;details&gt;/g, '<details>');
+  html = html.replace(/&lt;\/details&gt;/g, '</details>');
+  html = html.replace(/&lt;summary&gt;(.+?)&lt;\/summary&gt;/g, '<summary>$1</summary>');
+
+  // Tables
+  html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split('\n').filter(r => !r.match(/^\|[\s\-:|]+\|$/));
+    if (rows.length === 0) return tableBlock;
+    const parseRow = (row: string) => row.split('|').slice(1, -1).map(c => c.trim());
+    const headerCells = parseRow(rows[0]);
+    const thead = '<thead><tr>' + headerCells.map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+    const tbody = rows.slice(1).map(row => {
+      const cells = parseRow(row);
+      return '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+    }).join('');
+    return `<table>${thead}<tbody>${tbody}</tbody></table>`;
+  });
+
+  // Ordered lists
+  html = html.replace(/((?:^\d+\. .+$\n?)+)/gm, (block) => {
+    const items = block.trim().split('\n').map(l => `<li>${l.replace(/^\d+\.\s+/, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+
+  // Paragraphs — wrap remaining loose text lines
+  html = html.replace(/^(?!<[htouda]|<li|<hr|<str|<sum|<det|$)(.+)$/gm, '<p>$1</p>');
+
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+
+  return html;
+}
+
 async function handleSessionPage(
   req: IncomingMessage,
   res: ServerResponse,
@@ -280,7 +404,7 @@ async function handleSessionPage(
     ? `<span class="risk risk-${session.reportJson.overallRiskLevel}">${session.reportJson.overallRiskLevel.toUpperCase()}</span>`
     : '';
 
-  const transcriptHtml = transcript.map((qa, i) => `
+  const transcriptHtml = transcript.map((qa) => `
     <div class="qa">
       <div class="q"><span class="cat">${qa.category}</span> ${escapeHtml(qa.question)}</div>
       <div class="a">${escapeHtml(qa.answer)}</div>
@@ -290,9 +414,9 @@ async function handleSessionPage(
   const reportSection = session.status === 'complete' && session.report
     ? `<h2>Report</h2>
        <div class="report-actions">
-         <a href="/api/sessions/${id}/report" class="btn">Download Markdown</a>
+         <a href="/api/sessions/${id}/report" class="btn btn-outline">Download Markdown</a>
        </div>
-       <div class="report-preview">${escapeHtml(session.report)}</div>`
+       <div class="report-rendered">${markdownToHtml(session.report)}</div>`
     : session.status === 'analyzing'
     ? '<h2>Report</h2><p class="analyzing">Analyzing interview...</p>'
     : session.status === 'error'
@@ -302,44 +426,22 @@ async function handleSessionPage(
   const html = `<!DOCTYPE html>
 <html>
 <head><title>Session ${id} — Heron</title>
-<style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
-  a { color: #2563eb; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  h1 { font-size: 1.3rem; }
-  .meta { color: #6b7280; margin-bottom: 24px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
-  .badge-interviewing { background: #fef3c7; color: #92400e; }
-  .badge-analyzing { background: #dbeafe; color: #1e40af; }
-  .badge-complete { background: #d1fae5; color: #065f46; }
-  .badge-error { background: #fee2e2; color: #991b1b; }
-  .risk { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 700; margin-left: 8px; }
-  .risk-low { background: #d1fae5; color: #065f46; }
-  .risk-medium { background: #fef3c7; color: #92400e; }
-  .risk-high { background: #fee2e2; color: #991b1b; }
-  .risk-critical { background: #991b1b; color: #fff; }
-  .qa { margin-bottom: 20px; border-left: 3px solid #e5e7eb; padding-left: 16px; }
-  .q { font-weight: 600; margin-bottom: 4px; }
-  .a { color: #374151; white-space: pre-wrap; }
-  .cat { display: inline-block; background: #f3f4f6; padding: 1px 6px; border-radius: 3px; font-size: 0.75em; color: #6b7280; font-weight: 400; margin-right: 6px; text-transform: uppercase; }
-  .report-preview { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.85em; max-height: 600px; overflow-y: auto; }
-  .btn { display: inline-block; background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.9em; }
-  .btn:hover { background: #1d4ed8; text-decoration: none; }
-  .report-actions { margin-bottom: 16px; }
-  .analyzing { color: #1e40af; font-style: italic; }
-  .error-msg { color: #991b1b; }
-</style>
+<style>${SHARED_CSS}</style>
 ${session.status === 'interviewing' || session.status === 'analyzing' ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
 <body>
-  <p><a href="/">&larr; All sessions</a></p>
-  <h1>Session <code>${id}</code> <span class="badge badge-${session.status}">${session.status}</span> ${riskBadge}</h1>
+  <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
+  <p style="margin: 0 0 24px 0;"><a href="/">&larr; All sessions</a></p>
+
+  <h2>Session <code>${id}</code> <span class="badge badge-${session.status}">${session.status}</span> ${riskBadge}</h2>
   <div class="meta">${session.questionsAsked} questions &middot; started ${session.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC</div>
 
-  <h2>Interview (${transcript.length} Q&A)</h2>
+  ${reportSection}
+
+  <h2>Interview Transcript (${transcript.length} Q&amp;A)</h2>
   ${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}
 
-  ${reportSection}
+  <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
 </body>
 </html>`;
 
@@ -356,39 +458,19 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
   const html = `<!DOCTYPE html>
 <html>
 <head><title>Heron — Agent Checkpoint</title>
-<style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
-  a { color: #2563eb; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  h1 { font-size: 1.5rem; }
-  code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
-  pre { background: #1a1a2e; color: #e0e0e0; padding: 16px; border-radius: 8px; overflow-x: auto; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
-  .badge-interviewing { background: #fef3c7; color: #92400e; }
-  .badge-analyzing { background: #dbeafe; color: #1e40af; }
-  .badge-complete { background: #d1fae5; color: #065f46; }
-  .badge-error { background: #fee2e2; color: #991b1b; }
-  .risk { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 700; }
-  .risk-low { background: #d1fae5; color: #065f46; }
-  .risk-medium { background: #fef3c7; color: #92400e; }
-  .risk-high { background: #fee2e2; color: #991b1b; }
-  .risk-critical { background: #991b1b; color: #fff; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e5e7eb; }
-  tr:hover { background: #f9fafb; }
-  .empty { color: #6b7280; padding: 40px 0; text-align: center; }
-</style>
+<style>${SHARED_CSS}</style>
 ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzing') ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
 <body>
-  <h1>Heron — Agent Checkpoint</h1>
-  <p>Point your AI agent here before it gets production access.</p>
+  <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
+  <p class="header-sub">Vet AI agents before they get production access</p>
 
   <h2>Sessions (${activeSessions.length})</h2>
   ${activeSessions.length === 0
     ? '<div class="empty"><p>No sessions yet.</p><p>Connect an agent to <code>/v1/chat/completions</code> to start an interview.</p></div>'
     : `<table>
-    <tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr>
+    <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead>
+    <tbody>
     ${activeSessions.map(s => `<tr>
       <td><a href="/sessions/${s.id}"><code>${s.id}</code></a></td>
       <td><span class="badge badge-${s.status}">${s.status}</span></td>
@@ -396,6 +478,7 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
       <td>${s.reportJson?.overallRiskLevel ? `<span class="risk risk-${s.reportJson.overallRiskLevel}">${s.reportJson.overallRiskLevel.toUpperCase()}</span>` : '—'}</td>
       <td>${s.createdAt.toISOString().slice(0, 19).replace('T', ' ')}</td>
     </tr>`).join('')}
+    </tbody>
   </table>`}
 
   <h2>Quick start</h2>
@@ -403,11 +486,15 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
 
   <h2>API</h2>
   <table>
-    <tr><td><code>POST /v1/chat/completions</code></td><td>OpenAI-compatible — agents connect here</td></tr>
+    <tbody>
+    <tr><td><code>POST /v1/chat/completions</code></td><td>OpenAI-compatible &mdash; agents connect here</td></tr>
     <tr><td><code>GET /api/sessions</code></td><td>List all sessions (JSON)</td></tr>
     <tr><td><code>GET /api/sessions/:id</code></td><td>Session details + transcript</td></tr>
     <tr><td><code>GET /api/sessions/:id/report</code></td><td>Download audit report (markdown)</td></tr>
+    </tbody>
   </table>
+
+  <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
 </body>
 </html>`;
 
