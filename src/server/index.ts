@@ -137,7 +137,9 @@ async function handleChatCompletions(
 ): Promise<void> {
   const body = await readBody<ChatCompletionsRequest>(req);
   const messages = body.messages ?? [];
-  const sessionId = (req.headers['x-session-id'] as string) ?? null;
+  const sessionId = (req.headers['x-session-id'] as string)
+    ?? body.heron_session_id
+    ?? null;
 
   // Filter to user messages only (the agent's answers)
   const userMessages = messages.filter(m => m.role === 'user');
