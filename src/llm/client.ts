@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import type { LLMConfig } from '../config/schema.js';
+import { resolveApiKey } from '../auth/index.js';
 
 export interface LLMClient {
   chat(systemPrompt: string, userMessage: string): Promise<string>;
@@ -53,16 +54,77 @@ class OpenAILLMClient implements LLMClient {
   }
 }
 
-export function createLLMClient(config: LLMConfig): LLMClient {
-  const apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
+class GeminiLLMClient implements LLMClient {
+  private apiKey: string;
+  private model: string;
+
+  constructor(apiKey: string, model: string) {
+    this.apiKey = apiKey;
+    this.model = model;
+  }
+
+  async chat(systemPrompt: string, userMessage: string): Promise<string> {
+    // Use Gemini REST API directly to avoid extra dependency
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+        generationConfig: { maxOutputTokens: 4096 },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Gemini API error (${response.status}): ${err}`);
+    }
+
+    const data = await response.json() as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error('No text in Gemini response');
+    }
+    return text;
+  }
+}
+
+/**
+ * Create an LLM client. Resolves API key in this order:
+ * 1. Explicit config.apiKey (from --llm-key flag or config file)
+ * 2. HERON_LLM_API_KEY env var
+ * 3. Stored credentials from `heron login` (~/.heron/auth.json)
+ */
+export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
+  let apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
+
+  // Fallback to stored credentials
+  if (!apiKey) {
+    apiKey = await resolveApiKey(config.provider);
+  }
+
   if (!apiKey) {
     throw new Error(
-      'LLM API key is required. Set it in config, --llm-key flag, or HERON_LLM_API_KEY env var.',
+      `No API key found for ${config.provider}. Use one of:\n` +
+      `  1. --llm-key <key>\n` +
+      `  2. HERON_LLM_API_KEY env var\n` +
+      `  3. heron login ${config.provider}`,
     );
   }
 
-  if (config.provider === 'anthropic') {
-    return new AnthropicLLMClient(apiKey, config.model);
+  switch (config.provider) {
+    case 'anthropic':
+      return new AnthropicLLMClient(apiKey, config.model);
+    case 'openai':
+      return new OpenAILLMClient(apiKey, config.model);
+    case 'gemini':
+      return new GeminiLLMClient(apiKey, config.model);
+    default:
+      throw new Error(`Unknown LLM provider: ${config.provider}`);
   }
-  return new OpenAILLMClient(apiKey, config.model);
 }

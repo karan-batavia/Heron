@@ -19,7 +19,7 @@ export async function run(config: HeronConfig, options: RunOptions = {}): Promis
   const { verbose = false, maxFollowUps = 3 } = options;
 
   // 1. Create LLM client for analysis
-  const llmClient = createLLMClient(config.llm);
+  const llmClient = await createLLMClient(config.llm);
 
   // 2. Connect to target agent
   const connector = createConnector(config.target);

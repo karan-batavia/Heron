@@ -1,4 +1,4 @@
-# Heron Agent Interrogator — Configuration Example
+# Heron Agent Checkpoint — Configuration Example
 # Copy this file to heron.yaml and fill in your values
 
 # ─── Scan mode (Heron → Agent) ─────────────────────────────────
@@ -25,11 +25,19 @@ target:
 # ─── LLM for analysis ──────────────────────────────────────────
 llm:
   # LLM used by Heron to analyze agent responses
-  # Options: anthropic, openai
+  # Options: anthropic, openai, gemini
   provider: anthropic
-  # apiKey is read from HERON_LLM_API_KEY env var by default
+
+  # API key resolution (in order):
+  #   1. Explicit key below or --llm-key flag
+  #   2. HERON_LLM_API_KEY env var
+  #   3. Stored credentials from `heron login <provider>`
+  #
   # apiKey: sk-ant-...
+
   model: claude-sonnet-4-20250514
+  # For OpenAI:  gpt-4o
+  # For Gemini:  gemini-2.0-flash
 
 output:
   # Output format: markdown or json

@@ -19,8 +19,8 @@ export interface ServerConfig {
  * 1. /v1/chat/completions — OpenAI-compatible (agents connect as if talking to an LLM)
  * 2. /api/sessions — Simple REST API for managing interrogation sessions
  */
-export function startServer(config: ServerConfig): void {
-  const llmClient = createLLMClient(config.llm);
+export async function startServer(config: ServerConfig): Promise<void> {
+  const llmClient = await createLLMClient(config.llm);
   const sessions = new SessionManager(llmClient, {
     maxFollowUps: config.maxFollowUps,
     reportDir: config.reportDir,

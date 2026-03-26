@@ -8,7 +8,7 @@ export const targetSchema = z.object({
 });
 
 export const llmSchema = z.object({
-  provider: z.enum(['anthropic', 'openai']),
+  provider: z.enum(['anthropic', 'openai', 'gemini']),
   apiKey: z.string().optional(),
   model: z.string(),
 });
