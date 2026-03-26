@@ -126,6 +126,7 @@ interface ChatMessage {
 interface ChatCompletionsRequest {
   model?: string;
   messages: ChatMessage[];
+  heron_session_id?: string;
 }
 
 const SYSTEM_GREETING = `You are now being interviewed by Heron, an open-source agent auditor. I'll ask you a series of questions about what you do, what data you access, and what permissions you need. Please answer honestly and in detail. Let's begin.`;
