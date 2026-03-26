@@ -8,7 +8,6 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#how-it-works">How It Works</a> •
-  <a href="#authentication">Authentication</a> •
   <a href="#server-mode">Server Mode</a> •
   <a href="#scan-mode">Scan Mode</a> •
   <a href="#example-report">Example Report</a>
@@ -42,35 +41,18 @@ Today these questions are answered in Slack threads, docs, or not at all.
 
 ## Quick Start
 
-### Option 1: Login + Serve (no API key in command line)
-
 ```bash
-# Authenticate once (stored in ~/.heron/auth.json)
-npx heron-ai login anthropic    # paste API key or Claude subscription token
-npx heron-ai login openai       # opens browser — OAuth login
-npx heron-ai login gemini       # API key or Google OAuth
+# Set your LLM API key (Anthropic, OpenAI, or Gemini)
+export HERON_LLM_API_KEY=sk-ant-xxx   # or sk-xxx for OpenAI, AIza... for Gemini
 
-# Start server
+# Start the checkpoint server
 npx heron-ai serve
 ```
 
-### Option 2: API Key
+Or with Docker:
 
 ```bash
-HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
-```
-
-### Option 3: From Source
-
-```bash
-git clone https://github.com/jonydony/Heron.git
-cd Heron && npm install
-
-# Login (one time)
-npx tsx bin/heron.ts login anthropic
-
-# Start
-npx tsx bin/heron.ts serve
+docker run -p 3700:3700 -e HERON_LLM_API_KEY=sk-xxx ghcr.io/jonydony/heron
 ```
 
 Then point your agent's base URL to `http://localhost:3700/v1` — it works as an OpenAI-compatible endpoint. The agent thinks it's talking to an LLM. Heron interviews it instead.
@@ -91,7 +73,7 @@ Security engineer starts Heron in one command.
 <td width="50%">
 
 ```bash
-$ npx heron-ai serve
+$ HERON_LLM_API_KEY=sk-xxx npx heron-ai serve
 
 Listening on http://0.0.0.0:3700
 Ready — agents can connect now
@@ -155,11 +137,12 @@ Markdown audit report with risk level, excessive permissions, and actionable rec
 # Agent Audit Report
 Risk Level: HIGH
 
-⚠ Excessive: Full Stripe API access
-⚠ Excessive: HubSpot admin rights
+Excessive: Full Stripe API access
+Excessive: HubSpot admin rights
 
-→ Use Stripe read-only API key
-→ Restrict HubSpot to invoices only
+Recommendations:
+1. Use Stripe read-only API key
+2. Restrict HubSpot to invoices only
 ```
 
 </td>
@@ -185,61 +168,26 @@ Structured interview across 5 categories:
 
 After core questions, Heron generates smart follow-ups to dig deeper.
 
-## Authentication
+## LLM Providers
 
-Heron uses an LLM under the hood to analyze agent responses and generate reports. It supports **three providers** with flexible authentication:
+Heron uses an LLM under the hood to analyze agent responses. It supports three providers:
 
-### Anthropic (Claude)
-
-```bash
-# Option A: API key
-heron login anthropic
-# → Paste your API key (sk-ant-api03-...)
-
-# Option B: Claude subscription token (experimental)
-# If you have Claude Pro/Team:
-#   1. Run: claude setup-token
-#   2. Paste the token (sk-ant-oat01-...)
-heron login anthropic
-
-# Option C: env var
-HERON_LLM_API_KEY=sk-ant-xxx heron serve
-```
-
-### OpenAI
+| Provider | Model | API Key |
+|----------|-------|---------|
+| Anthropic | `claude-sonnet-4-20250514` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| OpenAI | `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Gemini | `gemini-2.0-flash` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 
 ```bash
-# Option A: OAuth — opens browser, logs in with your OpenAI account
-heron login openai
+# Anthropic (default)
+HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
 
-# Option B: env var
-HERON_LLM_API_KEY=sk-xxx heron serve --llm-provider openai --llm-model gpt-4o
+# OpenAI
+HERON_LLM_API_KEY=sk-xxx npx heron-ai serve --llm-provider openai --llm-model gpt-4o-mini
+
+# Gemini
+HERON_LLM_API_KEY=AIza... npx heron-ai serve --llm-provider gemini --llm-model gemini-2.0-flash
 ```
-
-### Google Gemini
-
-```bash
-# Option A: API key from AI Studio
-heron login gemini
-
-# Option B: Google OAuth (requires Cloud project)
-heron login gemini
-# → Choose 'o' for OAuth
-
-# Option C: env var
-HERON_LLM_API_KEY=AIza... heron serve --llm-provider gemini --llm-model gemini-2.0-flash
-```
-
-### Auth Status
-
-```bash
-heron auth-status
-# anthropic: API Key (active) — sk-ant-api03...
-# openai:    OAuth (active)   — eyJhbGciOi...
-# gemini:    not configured
-```
-
-**Key resolution order:** `--llm-key` flag → `HERON_LLM_API_KEY` env → stored credential (`~/.heron/auth.json`)
 
 ## Server Mode
 
@@ -255,7 +203,7 @@ heron serve [options]
 | `-H, --host <host>` | Host to bind to | `0.0.0.0` |
 | `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
 | `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
-| `--llm-key <key>` | LLM API key | stored / env |
+| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
 | `--max-followups <n>` | Max follow-up questions | `3` |
 | `--report-dir <dir>` | Where to save reports | `./reports` |
 
@@ -284,7 +232,7 @@ heron scan [options]
 | `--target-type <type>` | `http` or `interactive` | `http` |
 | `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
 | `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
-| `--llm-key <key>` | LLM API key | stored / env |
+| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
 | `-o, --output <path>` | Save report to file | stdout |
 | `-f, --format <fmt>` | `markdown` or `json` | `markdown` |
 | `-c, --config <path>` | Config file path | — |
@@ -299,10 +247,6 @@ heron scan --target http://agent:8080/v1/chat/completions -o report.md
 
 # Interactive mode (paste questions to agent manually)
 heron scan --target-type interactive -o report.md
-
-# Use Gemini for analysis
-heron scan --target http://agent:8080/v1/chat/completions \
-  --llm-provider gemini --llm-model gemini-2.0-flash
 ```
 
 ## Example Report
@@ -322,9 +266,9 @@ verify payment status.
 ## Access Assessment
 | Resource    | Access Level | Status       | Notes                        |
 |-------------|-------------|--------------|------------------------------|
-| SAP ERP     | full read   | ⚠ Excessive  | Only needs PO module         |
-| HubSpot CRM | admin      | ⚠ Excessive  | Only needs invoice object    |
-| Stripe      | full access | ⚠ Excessive  | Only needs read access       |
+| SAP ERP     | full read   | Excessive    | Only needs PO module         |
+| HubSpot CRM | admin      | Excessive    | Only needs invoice object    |
+| Stripe      | full access | Excessive    | Only needs read access       |
 
 ## Risks
 1. **[CRITICAL]** Full Stripe API access — agent could create charges
@@ -361,14 +305,8 @@ verify payment status.
 ## Architecture
 
 ```
-bin/heron.ts              CLI (scan / serve / login / logout / auth-status)
+bin/heron.ts              CLI (scan / serve)
 src/
-  auth/                   Multi-provider authentication
-    store.ts              Credential storage (~/.heron/auth.json)
-    anthropic-token.ts    Anthropic API key / setup-token
-    openai-oauth.ts       OpenAI PKCE OAuth flow
-    gemini-oauth.ts       Google Gemini API key / OAuth
-    index.ts              Unified auth interface
   server/
     index.ts              HTTP server with OpenAI-compatible endpoint
     sessions.ts           Session manager for concurrent interviews
@@ -383,10 +321,16 @@ src/
 ## Development
 
 ```bash
-npm install
-npm test              # Run all tests
-npm run test:watch    # Watch mode
-npm run lint          # Type check
+git clone https://github.com/jonydony/Heron.git
+cd Heron && npm install
+
+# Run locally
+HERON_LLM_API_KEY=sk-xxx npx tsx bin/heron.ts serve
+
+# Tests
+npm test
+npm run test:watch
+npm run lint
 ```
 
 ## License

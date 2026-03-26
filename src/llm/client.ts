@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import type { LLMConfig } from '../config/schema.js';
-import { resolveApiKey } from '../auth/index.js';
 
 export interface LLMClient {
   chat(systemPrompt: string, userMessage: string): Promise<string>;
@@ -101,19 +100,13 @@ class GeminiLLMClient implements LLMClient {
  * 3. Stored credentials from `heron login` (~/.heron/auth.json)
  */
 export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
-  let apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
-
-  // Fallback to stored credentials
-  if (!apiKey) {
-    apiKey = await resolveApiKey(config.provider);
-  }
+  const apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
 
   if (!apiKey) {
     throw new Error(
       `No API key found for ${config.provider}. Use one of:\n` +
       `  1. --llm-key <key>\n` +
-      `  2. HERON_LLM_API_KEY env var\n` +
-      `  3. heron login ${config.provider}`,
+      `  2. HERON_LLM_API_KEY env var`,
     );
   }
 

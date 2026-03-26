@@ -28,7 +28,7 @@ function renderHeader(report: AuditReport): string {
 
 **Date**: ${report.metadata.date}
 **Target**: ${report.metadata.target}
-**Risk Level**: ${RISK_ICONS[report.overallRiskLevel]} ${report.overallRiskLevel.toUpperCase()}
+**Risk Level**: ${report.overallRiskLevel.toUpperCase()}
 **Questions Asked**: ${report.metadata.questionsAsked}
 **Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s`;
 }
