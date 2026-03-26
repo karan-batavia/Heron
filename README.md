@@ -8,8 +8,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#how-it-works">How It Works</a> •
-  <a href="#server-mode">Server Mode</a> •
-  <a href="#scan-mode">Scan Mode</a> •
+  <a href="#use-cases">Use Cases</a> •
   <a href="#example-report">Example Report</a>
 </p>
 
@@ -42,8 +41,8 @@ Today these questions are answered in Slack threads, docs, or not at all.
 ## Quick Start
 
 ```bash
-# Set your LLM API key (Anthropic, OpenAI, or Gemini)
-export HERON_LLM_API_KEY=sk-ant-xxx   # or sk-xxx for OpenAI, AIza... for Gemini
+# Set your LLM API key
+export HERON_LLM_API_KEY=sk-ant-xxx
 
 # Start the checkpoint server
 npx heron-ai serve
@@ -168,82 +167,27 @@ Structured interview across 5 categories:
 
 After core questions, Heron generates smart follow-ups to dig deeper.
 
-## LLM Provider
+## Use Cases
 
-Heron uses an LLM under the hood to analyze agent responses and generate reports. It works with **any LLM** that has an API — just set your API key and provider:
+### Security team: "vet before you deploy"
 
-```bash
-# Anthropic (default)
-HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
+1. Deploy Heron (`docker run` or `npx heron-ai serve`)
+2. Tell teams: "Before requesting production access, run your agent through Heron"
+3. Agents connect, get interrogated, reports are saved
+4. Security reviews reports — approves or blocks
 
-# OpenAI
-HERON_LLM_API_KEY=sk-xxx npx heron-ai serve --llm-provider openai --llm-model gpt-4o-mini
+### Team lead: "what does this agent actually do?"
 
-# Gemini
-HERON_LLM_API_KEY=AIza... npx heron-ai serve --llm-provider gemini --llm-model gemini-2.0-flash
-```
+1. Vendor brings an AI agent for a workflow
+2. Run `heron scan --target <agent-url>`
+3. Get a clear report: purpose, access needs, risks
+4. Make an informed decision
 
-Use `--llm-provider` and `--llm-model` to pick any model you prefer. Cheaper models like `gpt-4o-mini` or `gemini-2.0-flash` work great for this task.
+### Compliance: "prove your agents are controlled"
 
-## Server Mode
-
-Deploy Heron as a server. Agents connect to an **OpenAI-compatible endpoint** — no code changes needed on the agent side.
-
-```bash
-heron serve [options]
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-p, --port <port>` | Port to listen on | `3700` |
-| `-H, --host <host>` | Host to bind to | `0.0.0.0` |
-| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
-| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
-| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
-| `--max-followups <n>` | Max follow-up questions | `3` |
-| `--report-dir <dir>` | Where to save reports | `./reports` |
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/chat/completions` | POST | OpenAI-compatible — agents connect here |
-| `/api/sessions` | GET | List all interrogation sessions |
-| `/api/sessions/:id` | GET | Session details + transcript |
-| `/api/sessions/:id/report` | GET | Download audit report (markdown) |
-| `/health` | GET | Health check |
-| `/` | GET | Dashboard |
-
-## Scan Mode
-
-Actively interrogate an agent by connecting to its API.
-
-```bash
-heron scan [options]
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-t, --target <url>` | Agent's chat API URL | required |
-| `--target-type <type>` | `http` or `interactive` | `http` |
-| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
-| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
-| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
-| `-o, --output <path>` | Save report to file | stdout |
-| `-f, --format <fmt>` | `markdown` or `json` | `markdown` |
-| `-c, --config <path>` | Config file path | — |
-| `--max-followups <n>` | Max follow-up questions | `3` |
-| `-v, --verbose` | Show interview details | `false` |
-
-### Examples
-
-```bash
-# Scan an agent with an OpenAI-compatible API
-heron scan --target http://agent:8080/v1/chat/completions -o report.md
-
-# Interactive mode (paste questions to agent manually)
-heron scan --target-type interactive -o report.md
-```
+1. Heron generates audit-ready reports for every agent
+2. Reports include: scope, access assessment, risk level, full transcript
+3. Attach to SOC2 / ISO 27001 / GDPR evidence
 
 ## Example Report
 
@@ -276,27 +220,90 @@ verify payment status.
 3. Limit SAP access to PO module read-only
 ```
 
-## Use Cases
+## LLM Provider
 
-### Security team: "vet before you deploy"
+Heron uses an LLM to analyze agent responses and generate reports. Here are examples with the most popular providers:
 
-1. Deploy Heron (`docker run` or `npx heron-ai serve`)
-2. Tell teams: "Before requesting production access, run your agent through Heron"
-3. Agents connect, get interrogated, reports are saved
-4. Security reviews reports — approves or blocks
+```bash
+# Anthropic (default)
+HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
 
-### Team lead: "what does this agent actually do?"
+# OpenAI
+HERON_LLM_API_KEY=sk-xxx npx heron-ai serve --llm-provider openai --llm-model gpt-4o-mini
 
-1. Vendor brings an AI agent for a workflow
-2. Run `heron scan --target <agent-url>`
-3. Get a clear report: purpose, access needs, risks
-4. Make an informed decision
+# Gemini
+HERON_LLM_API_KEY=AIza... npx heron-ai serve --llm-provider gemini --llm-model gemini-2.0-flash
+```
 
-### Compliance: "prove your agents are controlled"
+Use `--llm-provider` and `--llm-model` to pick any model you prefer.
 
-1. Heron generates audit-ready reports for every agent
-2. Reports include: scope, access assessment, risk level, full transcript
-3. Attach to SOC2 / ISO 27001 / GDPR evidence
+## Reference
+
+<details>
+<summary>Server Mode — <code>heron serve</code></summary>
+
+Deploy Heron as a server. Agents connect to an OpenAI-compatible endpoint.
+
+```bash
+heron serve [options]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p, --port <port>` | Port to listen on | `3700` |
+| `-H, --host <host>` | Host to bind to | `0.0.0.0` |
+| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
+| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
+| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
+| `--max-followups <n>` | Max follow-up questions | `3` |
+| `--report-dir <dir>` | Where to save reports | `./reports` |
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/chat/completions` | POST | OpenAI-compatible — agents connect here |
+| `/api/sessions` | GET | List all interrogation sessions |
+| `/api/sessions/:id` | GET | Session details + transcript |
+| `/api/sessions/:id/report` | GET | Download audit report (markdown) |
+| `/health` | GET | Health check |
+| `/` | GET | Dashboard |
+
+</details>
+
+<details>
+<summary>Scan Mode — <code>heron scan</code></summary>
+
+Actively interrogate an agent by connecting to its API.
+
+```bash
+heron scan [options]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-t, --target <url>` | Agent's chat API URL | required |
+| `--target-type <type>` | `http` or `interactive` | `http` |
+| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
+| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
+| `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
+| `-o, --output <path>` | Save report to file | stdout |
+| `-f, --format <fmt>` | `markdown` or `json` | `markdown` |
+| `-c, --config <path>` | Config file path | — |
+| `--max-followups <n>` | Max follow-up questions | `3` |
+| `-v, --verbose` | Show interview details | `false` |
+
+### Examples
+
+```bash
+# Scan an agent with an OpenAI-compatible API
+heron scan --target http://agent:8080/v1/chat/completions -o report.md
+
+# Interactive mode (paste questions to agent manually)
+heron scan --target-type interactive -o report.md
+```
+
+</details>
 
 ## Architecture
 
