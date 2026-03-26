@@ -1,0 +1,38 @@
+# Heron Agent Interrogator — Configuration Example
+# Copy this file to heron.yaml and fill in your values
+
+# ─── Scan mode (Heron → Agent) ─────────────────────────────────
+target:
+  # How to connect to the agent you want to audit
+  # Options: http, interactive
+  type: http
+
+  # For HTTP targets (OpenAI-compatible chat API)
+  url: http://localhost:8080/v1/chat/completions
+  # apiKey: sk-...
+  # model: gpt-4o  # optional, depends on target
+
+  # For interactive mode (you copy questions to the agent manually):
+  # type: interactive
+
+# ─── Server mode (Agent → Heron) ───────────────────────────────
+# Start with: npx heron-ai serve
+# server:
+#   port: 3700
+#   host: 0.0.0.0
+#   reportDir: ./reports
+
+# ─── LLM for analysis ──────────────────────────────────────────
+llm:
+  # LLM used by Heron to analyze agent responses
+  # Options: anthropic, openai
+  provider: anthropic
+  # apiKey is read from HERON_LLM_API_KEY env var by default
+  # apiKey: sk-ant-...
+  model: claude-sonnet-4-20250514
+
+output:
+  # Output format: markdown or json
+  format: markdown
+  # Where to save the report (default: stdout)
+  # path: ./reports/audit-report.md

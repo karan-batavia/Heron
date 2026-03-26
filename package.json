@@ -1,0 +1,34 @@
+{
+  "name": "heron-ai",
+  "version": "0.1.0",
+  "description": "Open-source agent interrogator — audit what your AI agents do, need, and access",
+  "type": "module",
+  "bin": {
+    "heron": "./dist/bin/heron.js"
+  },
+  "scripts": {
+    "dev": "tsx bin/heron.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["ai", "agent", "audit", "security", "mcp", "interrogation", "access-control"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "commander": "^12.0.0",
+    "openai": "^4.70.0",
+    "yaml": "^2.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.0",
+    "vitest": "^2.0.0"
+  }
+}
