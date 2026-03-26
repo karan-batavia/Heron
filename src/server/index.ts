@@ -436,7 +436,7 @@ async function handleSessionPage(
 
   const html = `<!DOCTYPE html>
 <html>
-<head><title>Session ${id} — Heron</title>${FAVICON_LINK}
+<head><title>Heron</title>${FAVICON_LINK}
 <style>${SHARED_CSS}</style>
 ${session.status === 'interviewing' || session.status === 'analyzing' ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
@@ -468,7 +468,7 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
 
   const html = `<!DOCTYPE html>
 <html>
-<head><title>Heron — Agent Checkpoint</title>${FAVICON_LINK}
+<head><title>Heron</title>${FAVICON_LINK}
 <style>${SHARED_CSS}</style>
 ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzing') ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
