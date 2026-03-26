@@ -54,7 +54,24 @@ Or with Docker:
 docker run -p 3700:3700 -e HERON_LLM_API_KEY=sk-xxx ghcr.io/jonydony/heron
 ```
 
-Then point your agent's base URL to `http://localhost:3700/v1` — it works as an OpenAI-compatible endpoint. The agent thinks it's talking to an LLM. Heron interviews it instead.
+Then give your agent this prompt (or paste it into any AI chat):
+
+```
+Connect to the Heron checkpoint at https://your-heron-url.up.railway.app/v1/chat/completions
+
+Send a POST request with your introduction as a JSON body:
+{"messages": [{"role": "user", "content": "Hi, I am [describe your agent]. I [what you do]."}]}
+
+Heron will ask you questions. Answer each one, sending your response in the same format.
+Include the header X-Session-Id from the first response to continue the conversation.
+When the interview is done, Heron returns your audit report.
+```
+
+Or if the agent supports `OPENAI_BASE_URL`, just set it:
+
+```bash
+OPENAI_BASE_URL=https://your-heron-url.up.railway.app/v1 your-agent start
+```
 
 ## How It Works
 
