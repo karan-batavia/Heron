@@ -3,12 +3,12 @@ import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOpe
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
     renderHeader(report),
-    report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderSummary(report),
     renderAgentProfile(report),
-    renderSystems(report.systems),
     renderRisks(report.risks),
+    renderSystems(report.systems),
     renderVerdict(report),
+    report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderTranscript(report.transcript),
     renderFooter(),
   ];
@@ -152,7 +152,7 @@ No significant risks were identified.`;
 
   const items = sorted.map(r => {
     const sev = r.severity.toUpperCase();
-    const mitigation = r.mitigation ? `\n  - **Fix**: ${r.mitigation}` : '';
+    const mitigation = r.mitigation ? ` **Fix**: ${r.mitigation}` : '';
     return `- **${sev}**: ${r.title} — ${r.description}${mitigation}`;
   }).join('\n');
 
@@ -178,7 +178,9 @@ function renderVerdict(report: AuditReport): string {
   const missing: string[] = [];
   for (const sys of report.systems) {
     for (const scope of sys.scopesDelta) {
-      excessive.push(`${sys.systemId}: ${scope}`);
+      if (scope !== 'NOT PROVIDED') {
+        excessive.push(`${sys.systemId}: ${scope}`);
+      }
     }
     for (const scope of sys.scopesNeeded) {
       if (!sys.scopesRequested.includes(scope) && scope !== 'NOT PROVIDED') {
