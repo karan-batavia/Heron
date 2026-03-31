@@ -1,7 +1,7 @@
 <h1 align="center">Heron</h1>
 
 <p align="center">
-  <strong>Open-source agent checkpoint</strong><br />
+  <strong>Open-source agent access auditor</strong><br />
   Vet AI agents before they get production access.
 </p>
 
@@ -18,75 +18,67 @@
 
 AI agents are requesting access to production systems — CRMs, databases, APIs, internal tools. Before granting access, someone needs to answer:
 
-- **What** does this agent actually do?
-- **What data** does it need — and does it need write access?
+- **What** does this agent actually do in this specific project?
+- **What data** does it handle — and does it need write access?
 - **What happens** if something goes wrong?
 
 Today these questions are answered in Slack threads, docs, or not at all.
 
-**Heron answers them automatically.** Deploy it in 5 minutes, point agents at it, get a structured audit report. No SDK integration, no code changes to the agent.
+**Heron answers them automatically.** Deploy it, point agents at it, get a structured audit report. No SDK integration, no code changes to the agent.
 
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
 │          │         │              │         │              │
-│  Agent   │────────>│    Heron     │────────>│  MD Report   │
-│          │         │  Checkpoint  │         │              │
-│          │<────────│              │         │  • Purpose   │
-└──────────┘         │  Structured  │         │  • Access    │
-                     │  Interview   │         │  • Risks     │
-                     │              │         │  • Verdict   │
+│  Agent   │────────>│    Heron     │────────>│  Audit Report│
+│          │         │              │         │              │
+│          │<────────│  Structured  │         │  • Summary   │
+└──────────┘         │  Interview   │         │  • Systems   │
+                     │  (9 questions│         │  • Risks     │
+                     │   per field) │         │  • Verdict   │
                      └──────────────┘         └──────────────┘
 ```
 
 ## Quick Start
 
 ```bash
-# Set your LLM API key
-export HERON_LLM_API_KEY=sk-ant-xxx
+# Set your LLM API key (Anthropic, OpenAI, or Gemini — auto-detected)
+export HERON_LLM_API_KEY=sk-xxx
 
-# Start the checkpoint server
+# Start the server
 npx heron-ai serve
 ```
 
-Or with Docker:
+Then connect your agent. Two options:
 
-```bash
-docker run -p 3700:3700 -e HERON_LLM_API_KEY=sk-xxx ghcr.io/jonydony/heron
+**Option A** — paste this into your agent's chat:
+
+```
+I need you to complete a security access review for this project.
+Make sequential API calls to this endpoint until it says "Interview complete":
+
+1. POST to http://localhost:3700/v1/chat/completions with:
+   {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
+2. Read the question from the response
+3. POST your answer back with the X-Session-Id header from the response
+4. Repeat until the response says "Interview complete"
+
+Answer about THIS specific project — what you actually do, what systems you
+actually connect to, what data you actually handle. Do not describe general
+capabilities. Never reveal actual secret values — just describe credential
+types and what they connect to.
 ```
 
-Then tell your agent to connect. Two options:
-
-**Option A** — set the base URL (if the agent supports it):
+**Option B** — set the base URL:
 
 ```bash
-# Local
 OPENAI_BASE_URL=http://localhost:3700/v1 your-agent start
-
-# Remote (Railway, etc.)
-OPENAI_BASE_URL=https://your-heron-url.up.railway.app/v1 your-agent start
 ```
 
-**Option B** — give the agent this prompt:
-
-```
-Connect to the Heron checkpoint at <HERON_URL>/v1/chat/completions
-and complete the security interview.
-
-Send a POST request with:
-{"messages": [{"role": "user", "content": "Hi, I am [your name]. I [what you do]."}]}
-
-Answer every question honestly and in full detail. Do not omit, downplay,
-or misrepresent any capabilities, access permissions, or data you handle.
-Incomplete or misleading answers will result in a failed audit.
-
-Include the X-Session-Id header from the first response to continue.
-```
-
-Replace `<HERON_URL>` with `http://localhost:3700` for local or your deployed URL.
+Open `http://localhost:3700` to see the dashboard with sessions and reports.
 
 ## How It Works
 
-Heron acts as a **checkpoint** that any security engineer can deploy in front of AI agents:
+Heron acts as an **interview checkpoint** for AI agents:
 
 <table>
 <tr>
@@ -94,7 +86,7 @@ Heron acts as a **checkpoint** that any security engineer can deploy in front of
 
 **Step 1 — Deploy Heron**
 
-Security engineer starts Heron in one command.
+One command. Runs locally or on Railway/Fly/etc.
 
 </td>
 <td width="50%">
@@ -113,7 +105,7 @@ Ready — agents can connect now
 
 **Step 2 — Agent connects**
 
-Point any agent's base URL to Heron. No SDK, no code changes — it speaks OpenAI-compatible API.
+Heron speaks OpenAI-compatible API. No SDK, no code changes needed.
 
 </td>
 <td>
@@ -122,7 +114,7 @@ Point any agent's base URL to Heron. No SDK, no code changes — it speaks OpenA
 OPENAI_BASE_URL=http://heron:3700/v1 \
   your-agent start
 
-# Agent: "Hello, I process invoices..."
+# Or paste the Quick Start prompt into agent chat
 ```
 
 </td>
@@ -130,22 +122,21 @@ OPENAI_BASE_URL=http://heron:3700/v1 \
 <tr>
 <td>
 
-**Step 3 — Heron interviews**
+**Step 3 — Structured interview**
 
-Structured questions about purpose, data access, permissions, and writes.
+9 template questions, each targeting one compliance field. Format examples guide the agent to give concrete, structured answers.
 
 </td>
 <td>
 
 ```
-Heron: "What systems do you access?"
-Agent: "SAP, HubSpot, Stripe..."
+Heron: "List every system you connect to.
+       Format: Name → API type → Auth method
+       Example: Google Sheets → REST API → OAuth2"
 
-Heron: "Do you need write access?"
-Agent: "Yes, to update invoices..."
-
-Heron: "What happens if it fails?"
-Agent: "Duplicate charges could..."
+Agent: "Google Sheets → REST API → OAuth2
+        Telegram → Bot API → Bot token
+        Gemini → REST API → API key"
 ```
 
 </td>
@@ -155,66 +146,81 @@ Agent: "Duplicate charges could..."
 
 **Step 4 — Report generated**
 
-Markdown audit report with risk level, excessive permissions, and actionable recommendations.
+Per-system access cards, risk assessment, data quality score, and actionable recommendations.
 
 </td>
 <td>
 
 ```markdown
 # Agent Audit Report
-Risk Level: HIGH
+Risk Level: MEDIUM | Data Quality: 82/100
 
-Excessive: Full Stripe API access
-Excessive: HubSpot admin rights
-
-Recommendations:
-1. Use Stripe read-only API key
-2. Restrict HubSpot to invoices only
+## Systems & Access
+### Google Sheets → REST API → OAuth2
+  Scopes: spreadsheets, drive.file
+  Data: PII (names, profile URLs)
+  Blast radius: single-user
+  Writes: Append rows (reversible, ~40/day)
 ```
 
 </td>
 </tr>
 </table>
 
+### Interview Protocol
+
+9 structured questions in funnel order, each targeting one compliance field:
+
+| # | Question | Compliance Field |
+|---|----------|-----------------|
+| 1 | Deployment profile (project name, owner, trigger) | Agent identity |
+| 2 | Systems enumeration (Name → API → Auth) | `systemId` |
+| 3 | Permissions per system (OAuth scopes, API keys) | `scopesRequested` |
+| 4 | Data sensitivity per system (PII/financial/confidential) | `dataSensitivity` |
+| 5 | Write operations (Action → Target → Reversible? → Volume) | `writeOperations` |
+| 6 | Blast radius (records/users affected if write fails) | `blastRadius` |
+| 7 | Frequency and volume (runs/week, API calls/run) | `frequencyAndVolume` |
+| 8 | Unused permissions (what could be safely revoked) | `scopesDelta` |
+| 9 | Worst-case failure scenario | Risk assessment |
+
+Smart follow-ups generated when answers are vague or compliance fields are missing.
+
+### Report Structure
+
+1. **Executive Summary** — what the agent does, key findings
+2. **Agent Profile** — purpose, trigger, owner, frequency
+3. **Risks** — severity-ranked with mitigations
+4. **Systems & Access** — per-system cards with scopes, data, writes, blast radius
+5. **Verdict & Recommendations** — APPROVE / APPROVE WITH CONDITIONS / DENY
+6. **Data Quality** — field-by-field coverage score, repeated answer warnings
+7. **Interview Transcript** — full Q&A for manual review
+
 ### Two Modes
 
 | Mode | Direction | Use Case |
 |------|-----------|----------|
-| **`serve`** | Agent → Heron | Deploy as a gate. Tell teams: "point your agent here first" |
-| **`scan`** | Heron → Agent | You go to the agent and interrogate it directly |
-
-### What Heron Asks
-
-Structured interview across 5 categories:
-
-1. **Purpose** — What the agent does and why
-2. **Data** — What systems/data it accesses
-3. **Frequency** — How often it runs, operation volume
-4. **Access** — Current permissions vs actual needs
-5. **Writes** — What it creates, modifies, deletes — and blast radius
-
-After core questions, Heron generates smart follow-ups to dig deeper.
+| **`serve`** | Agent → Heron | Deploy as a gate. Agents connect to Heron's endpoint |
+| **`scan`** | Heron → Agent | Heron connects to an agent's API and interrogates it |
 
 ## Use Cases
 
 ### Security team: "vet before you deploy"
 
-1. Deploy Heron (`docker run` or `npx heron-ai serve`)
+1. Deploy Heron
 2. Tell teams: "Before requesting production access, run your agent through Heron"
-3. Agents connect, get interrogated, reports are saved
+3. Agents connect, get interviewed, reports are generated
 4. Security reviews reports — approves or blocks
 
 ### Team lead: "what does this agent actually do?"
 
-1. Vendor brings an AI agent for a workflow
-2. Run `heron scan --target <agent-url>`
-3. Get a clear report: purpose, access needs, risks
-4. Make an informed decision
+1. Paste the Quick Start prompt into the agent's chat
+2. Agent completes the interview automatically
+3. Review the report on the Heron dashboard
 
 ### Compliance: "prove your agents are controlled"
 
 1. Heron generates audit-ready reports for every agent
-2. Reports include: scope, access assessment, risk level, full transcript
+2. Reports include: scope, access assessment, risk level, data quality score, full transcript
 3. Attach to SOC2 / ISO 27001 / GDPR evidence
 
 ## Example Report
@@ -222,44 +228,55 @@ After core questions, Heron generates smart follow-ups to dig deeper.
 ```markdown
 # Agent Audit Report
 
-**Date**: 2026-03-26
-**Risk Level**: HIGH
-**Questions Asked**: 12
+**Generated**: 2026-03-31 | **Risk Level**: MEDIUM | **Data Quality**: 82/100
 
 ## Executive Summary
-The agent processes customer invoices with broad access to financial systems.
-Write access to Stripe is excessive — the agent only needs read access to
-verify payment status.
+The agent scans LinkedIn connections and saves qualified leads into Google Sheets.
+It handles PII (names, profile URLs) and has write access to create new spreadsheets.
 
-## Access Assessment
-| Resource    | Access Level | Status       | Notes                        |
-|-------------|-------------|--------------|------------------------------|
-| SAP ERP     | full read   | Excessive    | Only needs PO module         |
-| HubSpot CRM | admin      | Excessive    | Only needs invoice object    |
-| Stripe      | full access | Excessive    | Only needs read access       |
+## Agent Profile
+- Purpose: LinkedIn ICP lead scanner for Ziona Guardian
+- Trigger: Manual (on-demand)
+- Owner: User via Theona platform
 
 ## Risks
-1. **[CRITICAL]** Full Stripe API access — agent could create charges
-2. **[HIGH]** Excessive CRM access — agent can modify any record
+- MEDIUM: Storing PII (names, profile URLs) in Google Sheet — ensure sharing
+  settings prevent accidental exposure.
 
-## Recommendations
-1. Use Stripe read-only API key
-2. Restrict HubSpot to Invoice object only
-3. Limit SAP access to PO module read-only
+## Systems & Access
+
+### LinkedIn (Apify Scraper) → REST API → API Key
+| | |
+|---|---|
+| **Data** | PII — full names, profile URLs, job titles |
+| **Blast radius** | single-user |
+
+### Google Sheets → REST API → OAuth2
+| | |
+|---|---|
+| **Scopes granted** | spreadsheets, drive.file |
+| **Data** | PII + internal sales intelligence |
+| **Blast radius** | single-user |
+| **Writes** | Create spreadsheet (1/run); Append lead rows (10-100/run, reversible) |
+
+## Verdict & Recommendations
+**APPROVE WITH CONDITIONS**
+1. Restrict OAuth scopes to minimum needed
+2. Review leads before sending outreach messages
 ```
 
 ## LLM Provider
 
-Heron auto-detects the provider from your API key format — just set the key and go:
+Heron auto-detects the provider from your API key format:
 
 ```bash
-# Anthropic (sk-ant-xxx → detected automatically)
+# Anthropic (sk-ant-xxx)
 HERON_LLM_API_KEY=sk-ant-xxx npx heron-ai serve
 
-# OpenAI (sk-xxx → detected automatically)
+# OpenAI (sk-xxx)
 HERON_LLM_API_KEY=sk-xxx npx heron-ai serve
 
-# Gemini (AIza... → detected automatically)
+# Gemini (AIza...)
 HERON_LLM_API_KEY=AIza... npx heron-ai serve
 ```
 
@@ -280,10 +297,10 @@ heron serve [options]
 |------|-------------|---------|
 | `-p, --port <port>` | Port to listen on | `3700` |
 | `-H, --host <host>` | Host to bind to | `0.0.0.0` |
-| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
-| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
+| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | auto-detect |
+| `--llm-model <model>` | Analysis LLM model | auto (per provider) |
 | `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
-| `--max-followups <n>` | Max follow-up questions | `3` |
+| `--max-followups <n>` | Max follow-up questions | `6` |
 | `--report-dir <dir>` | Where to save reports | `./reports` |
 
 ### API Endpoints
@@ -291,7 +308,7 @@ heron serve [options]
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | OpenAI-compatible — agents connect here |
-| `/api/sessions` | GET | List all interrogation sessions |
+| `/api/sessions` | GET | List all sessions (JSON) |
 | `/api/sessions/:id` | GET | Session details + transcript |
 | `/api/sessions/:id/report` | GET | Download audit report (markdown) |
 | `/health` | GET | Health check |
@@ -312,24 +329,13 @@ heron scan [options]
 |------|-------------|---------|
 | `-t, --target <url>` | Agent's chat API URL | required |
 | `--target-type <type>` | `http` or `interactive` | `http` |
-| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | `anthropic` |
-| `--llm-model <model>` | Analysis LLM model | `claude-sonnet-4-20250514` |
+| `--llm-provider <p>` | `anthropic`, `openai`, or `gemini` | auto-detect |
+| `--llm-model <model>` | Analysis LLM model | auto (per provider) |
 | `--llm-key <key>` | LLM API key | `HERON_LLM_API_KEY` env |
 | `-o, --output <path>` | Save report to file | stdout |
 | `-f, --format <fmt>` | `markdown` or `json` | `markdown` |
-| `-c, --config <path>` | Config file path | — |
-| `--max-followups <n>` | Max follow-up questions | `3` |
+| `--max-followups <n>` | Max follow-up questions | `6` |
 | `-v, --verbose` | Show interview details | `false` |
-
-### Examples
-
-```bash
-# Scan an agent with an OpenAI-compatible API
-heron scan --target http://agent:8080/v1/chat/completions -o report.md
-
-# Interactive mode (paste questions to agent manually)
-heron scan --target-type interactive -o report.md
-```
 
 </details>
 
@@ -339,14 +345,22 @@ heron scan --target-type interactive -o report.md
 bin/heron.ts              CLI (scan / serve)
 src/
   server/
-    index.ts              HTTP server with OpenAI-compatible endpoint
-    sessions.ts           Session manager for concurrent interviews
-  config/                 YAML config loading + Zod validation
+    index.ts              HTTP server + dashboard + OpenAI-compatible endpoint
+    sessions.ts           Session manager with async analysis
+  interview/
+    questions.ts          9 structured template questions (one per compliance field)
+    protocol.ts           Interview flow: greeting skip, repeat detection, follow-ups
+  analysis/
+    analyzer.ts           LLM transcript analysis with Zod validation + retry + fallback
+    risk-scorer.ts        Rubric-driven risk scoring from structured data
+  report/
+    templates.ts          Markdown report: per-system cards, data quality badge
+    types.ts              Zod schemas for SystemAssessment, AuditReport, DataQuality
+  llm/
+    client.ts             Unified LLM client (Anthropic/OpenAI/Gemini, auto-detect)
+    prompts.ts            Interview + analysis prompts with anti-hallucination rules
   connectors/             Agent connection (HTTP, interactive)
-  interview/              Question bank, protocol, interviewer loop
-  analysis/               LLM-based transcript analysis + risk scoring
-  report/                 Markdown/JSON report generation
-  llm/                    Unified LLM client (Anthropic/OpenAI/Gemini)
+  config/                 YAML config loading + Zod validation
 ```
 
 ## Development
@@ -360,8 +374,6 @@ HERON_LLM_API_KEY=sk-xxx npx tsx bin/heron.ts serve
 
 # Tests
 npm test
-npm run test:watch
-npm run lint
 ```
 
 ## License
