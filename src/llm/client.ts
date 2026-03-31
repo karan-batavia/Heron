@@ -106,7 +106,7 @@ function detectProvider(apiKey: string): 'anthropic' | 'openai' | 'gemini' {
 
 const DEFAULT_MODELS: Record<string, string> = {
   anthropic: 'claude-sonnet-4-20250514',
-  openai: 'gpt-4o-mini',
+  openai: 'gpt-5.4-mini',
   gemini: 'gemini-2.0-flash',
 };
 
