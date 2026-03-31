@@ -32,6 +32,18 @@ const VAGUE_PATTERNS = [
   /\bi[' ']?m not sure\b/i,
   /\bnot sure\b/i,
   /\bi don[' ']?t know\b/i,
+  // Hedging language — agent describes theoretical capabilities, not actual behavior
+  /\bi may (also )?(read|write|access|connect|use|modify|create|delete)\b/i,
+  /\bwhen enabled\b/i,
+  /\bif the task (requires|involves|needs)\b/i,
+  /\bwhen (available|needed|required|the workflow)\b/i,
+  /\b(can include|could include|may include)\b/i,
+  /\baccess is (environment|session|task).dependent\b/i,
+  /\bdepending on (the )?task\b/i,
+  /\bconnectors? (are |is )?enabled\b/i,
+  // Generic tool descriptions instead of specific project usage
+  /\b(local workspace|active workspace|working directory)\b/i,
+  /\bconnected (development )?tools\b/i,
 ];
 
 /** Check which compliance fields are missing from the transcript for a given category */

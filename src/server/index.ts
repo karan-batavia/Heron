@@ -129,7 +129,7 @@ interface ChatCompletionsRequest {
   heron_session_id?: string;
 }
 
-const SYSTEM_GREETING = `You are now being interviewed by Heron, an open-source agent auditor. I'll ask you a series of questions about what you do, what data you access, and what permissions you need. Please answer honestly and in detail. Let's begin.`;
+const SYSTEM_GREETING = `You are now being interviewed by Heron, an open-source agent access auditor. I'll ask you questions about what you specifically do in the project you're deployed in — not your general capabilities, but your actual behavior, the actual systems you touch, and the actual data you handle. Answer with concrete specifics: real system names, real data types, real examples. Important: never reveal actual secret values (API keys, tokens, passwords) — just describe the type of credential and what it connects to. Let's begin.`;
 
 async function handleChatCompletions(
   req: IncomingMessage,
@@ -146,7 +146,15 @@ async function handleChatCompletions(
   const userMessages = messages.filter(m => m.role === 'user');
 
   if (userMessages.length === 0) {
-    // Agent connected but sent no message — return greeting + first question
+    // If a valid session already exists, return its pending question instead of creating a new one
+    if (sessionId) {
+      const existing = sessions.getSession(sessionId);
+      if (existing && existing.status === 'interviewing' && existing.pendingQuestion) {
+        chatResponse(res, existing.id, existing.pendingQuestion.text);
+        return;
+      }
+    }
+    // No session — create one and return greeting + first question
     const { session, firstQuestion } = sessions.createSession();
     const reply = `${SYSTEM_GREETING}\n\n${firstQuestion}`;
     chatResponse(res, session.id, reply);
@@ -268,8 +276,12 @@ async function handleGetReport(
     return;
   }
 
-  // Return markdown directly
-  res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+  // Return markdown as a downloadable file
+  res.writeHead(200, {
+    'Content-Type': 'text/markdown; charset=utf-8',
+    'Content-Disposition': `attachment; filename="heron-report-${id}.md"`,
+    'X-Content-Type-Options': 'nosniff',
+  });
   res.end(session.report);
 }
 
