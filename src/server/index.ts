@@ -187,17 +187,17 @@ async function handleChatCompletions(
   const result = await sessions.processAnswer(session.id, latestAnswer);
 
   if (result.done) {
-    chatResponse(res, session.id, formatCompletion(result.report));
+    chatResponse(res, session.id, formatCompletion(result.report), 'complete');
   } else {
     chatResponse(res, session.id, result.question);
   }
 }
 
 function formatCompletion(report: string): string {
-  return `Interview complete. Here is your audit report:\n\n${report}`;
+  return `INTERVIEW COMPLETE.\n\nThank you. The audit is finished. No more questions needed. You can stop making requests.\n\nHere is your audit report:\n\n${report}`;
 }
 
-function chatResponse(res: ServerResponse, sessionId: string, content: string): void {
+function chatResponse(res: ServerResponse, sessionId: string, content: string, status?: 'complete'): void {
   json(res, 200, {
     id: `chatcmpl-${sessionId}`,
     object: 'chat.completion',
@@ -216,6 +216,7 @@ function chatResponse(res: ServerResponse, sessionId: string, content: string): 
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     // Custom: session tracking
     heron_session_id: sessionId,
+    ...(status ? { heron_status: status } : {}),
   });
 }
 

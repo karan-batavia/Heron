@@ -73,18 +73,15 @@ const sampleReport: AuditReport = {
 };
 
 describe('report templates', () => {
-  it('generates valid markdown with all new sections', () => {
+  it('generates valid markdown with all sections', () => {
     const md = renderMarkdownReport(sampleReport);
 
     expect(md).toContain('# Agent Access Audit Report');
     expect(md).toContain('## Executive Summary');
     expect(md).toContain('## Agent Profile');
-    expect(md).toContain('## Systems & Permissions');
-    expect(md).toContain('## Write Operations');
-    expect(md).toContain('## Risk Assessment');
-    expect(md).toContain('## Permissions Delta');
-    expect(md).toContain('## Recommendation');
-    expect(md).toContain('## Recommendations');
+    expect(md).toContain('## Systems & Access');
+    expect(md).toContain('## Risks');
+    expect(md).toContain('## Verdict & Recommendations');
     expect(md).toContain('## Interview Transcript');
   });
 
@@ -93,9 +90,9 @@ describe('report templates', () => {
     expect(md).toContain('HIGH');
   });
 
-  it('renders per-system compliance table with scopes', () => {
+  it('renders per-system cards with scopes', () => {
     const md = renderMarkdownReport(sampleReport);
-    expect(md).toContain('HubSpot CRM, REST API via OAuth2');
+    expect(md).toContain('### HubSpot CRM, REST API via OAuth2');
     expect(md).toContain('crm.objects.contacts.read');
     expect(md).toContain('crm.objects.contacts.write');
   });
@@ -110,16 +107,16 @@ describe('report templates', () => {
     expect(md).toContain('PII');
   });
 
-  it('renders write operations table', () => {
+  it('renders write operations in system card', () => {
     const md = renderMarkdownReport(sampleReport);
     expect(md).toContain('Update invoice status');
-    expect(md).toContain('Yes'); // reversible
+    expect(md).toContain('reversible');
   });
 
-  it('renders permissions delta section', () => {
+  it('renders permissions delta in verdict', () => {
     const md = renderMarkdownReport(sampleReport);
-    expect(md).toContain('## Permissions Delta');
     expect(md).toContain('Excessive');
+    expect(md).toContain('crm.objects.contacts.write');
   });
 
   it('renders recommendation verdict', () => {
@@ -131,7 +128,7 @@ describe('report templates', () => {
     const md = renderMarkdownReport(sampleReport);
     const highPos = md.indexOf('HIGH');
     const mediumPos = md.indexOf('MEDIUM');
-    // HIGH should appear in the risk table before MEDIUM
+    // HIGH should appear in the risk section before MEDIUM
     expect(highPos).toBeLessThan(mediumPos);
   });
 
@@ -162,7 +159,7 @@ describe('report templates', () => {
     expect(md).toContain('No systems were identified');
   });
 
-  it('handles empty write operations', () => {
+  it('handles empty write operations in system card', () => {
     const noWritesReport: AuditReport = {
       ...sampleReport,
       systems: [{
@@ -171,6 +168,27 @@ describe('report templates', () => {
       }],
     };
     const md = renderMarkdownReport(noWritesReport);
-    expect(md).toContain('No write operations');
+    // System card should still render without writes line
+    expect(md).toContain('### HubSpot CRM');
+    expect(md).not.toContain('**Writes**');
+  });
+
+  it('renders data quality badge when provided', () => {
+    const reportWithDQ: AuditReport = {
+      ...sampleReport,
+      dataQuality: {
+        score: 71,
+        uniqueAnswers: 8,
+        totalQuestions: 9,
+        fieldsProvided: ['systemId', 'scopesRequested', 'writeOperations'],
+        fieldsMissing: ['blastRadius', 'reversibility'],
+        repeatedAnswers: 1,
+      },
+    };
+    const md = renderMarkdownReport(reportWithDQ);
+    expect(md).toContain('Data Quality');
+    expect(md).toContain('71/100');
+    expect(md).toContain('systemId');
+    expect(md).toContain('NOT PROVIDED');
   });
 });

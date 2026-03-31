@@ -130,6 +130,18 @@ export const analysisResultSchema = z.object({
 });
 export type AnalysisResult = z.infer<typeof analysisResultSchema>;
 
+// ─── Data Quality ────────────────────────────────────────────────────────────
+
+export const dataQualitySchema = z.object({
+  score: z.number(),                   // 0-100
+  uniqueAnswers: z.number(),           // answers that aren't greetings or repeats
+  totalQuestions: z.number(),
+  fieldsProvided: z.array(z.string()), // compliance fields with real data
+  fieldsMissing: z.array(z.string()),  // compliance fields with no/canned data
+  repeatedAnswers: z.number(),         // count of duplicate canned responses
+});
+export type DataQuality = z.infer<typeof dataQualitySchema>;
+
 // ─── Audit Report ───────────────────────────────────────────────────────────
 
 export const auditReportSchema = z.object({
@@ -146,6 +158,7 @@ export const auditReportSchema = z.object({
   recommendation: recommendationSchema.optional(),
   overallRiskLevel: severitySchema,
   transcript: z.array(qaPairSchema),
+  dataQuality: dataQualitySchema.optional(),
   metadata: z.object({
     date: z.string(),
     target: z.string(),

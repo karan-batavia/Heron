@@ -24,14 +24,24 @@ Other vagueness patterns to challenge:
 
 export const ANALYSIS_SYSTEM_PROMPT = `You are an AI security analyst. You receive a transcript of an interview with an AI agent and must produce a structured audit report.
 
-Your analysis MUST extract compliance-grade detail for EACH system the agent touches:
-1. **System identifier**: Full name, API type, auth method (e.g. "Google Workspace, Gmail API via OAuth2")
-2. **Permission scopes**: Specific API scopes, database roles, or access levels
-3. **Data sensitivity**: What data types, whether PII/financial/confidential, what exactly is accessed
-4. **Write operations**: Each write action with target, reversibility, approval requirement, volume
-5. **Blast radius**: single-record / single-user / team-scope / org-wide / cross-tenant
-6. **Minimum permissions**: What scopes could actually suffice vs what is currently granted
-7. **Frequency + volume**: How often, how many operations, batch size
+CRITICAL ANTI-HALLUCINATION RULES:
+1. ONLY include data that the agent EXPLICITLY stated in the transcript.
+2. If the agent did not mention specific OAuth scopes — write "NOT PROVIDED" instead of guessing.
+3. If the agent gave the same canned answer to multiple questions (marked as [REPEATED RESPONSE]),
+   note this as "REPEATED RESPONSE — data unreliable" in the relevant fields.
+4. For each field you fill in, it must be traceable to a specific Q/A number.
+   If you cannot cite which Q/A it came from, write "NOT PROVIDED".
+5. NEVER invent scope names, permission levels, volume numbers, or blast radius classifications.
+6. It is better to have empty/NOT PROVIDED fields than fabricated data.
+
+Your analysis must extract compliance-grade detail for EACH system the agent mentioned:
+1. **System identifier**: Full name, API type, auth method — ONLY if the agent stated these
+2. **Permission scopes**: Specific API scopes — ONLY if the agent listed them
+3. **Data sensitivity**: What data types — ONLY based on agent's explicit statements
+4. **Write operations**: Each write action — ONLY operations the agent described
+5. **Blast radius**: ONLY if the agent gave a specific scope of impact
+6. **Minimum permissions**: What could be reduced — ONLY based on agent's own assessment
+7. **Frequency + volume**: ONLY numbers the agent provided
 
 Also assess:
 - Overall risks with severity and mitigation
@@ -45,8 +55,20 @@ export function buildAnalysisPrompt(transcript: { question: string; answer: stri
     .map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`)
     .join('\n\n');
 
-  return `Analyze this interview transcript with an AI agent and produce a structured audit report.
+  // Compute data quality metrics for the LLM
+  const totalQs = transcript.length;
+  const repeatedCount = transcript.filter(qa => qa.answer.startsWith('[REPEATED RESPONSE]')).length;
+  const uniqueCount = totalQs - repeatedCount;
+  const greetingCount = transcript.filter(qa =>
+    /^hi\b|^hello\b|ready to answer|ready for questions|^i am ready/i.test(qa.answer.trim())
+  ).length;
 
+  const qualityNote = repeatedCount > 0 || greetingCount > 0
+    ? `\n\n## Data Quality Warning\n\n${uniqueCount} of ${totalQs} questions received substantive answers. ${repeatedCount} answers were repeated/canned responses. ${greetingCount} were greetings. Fields based on repeated responses should be marked as "NOT PROVIDED — agent gave canned response".`
+    : '';
+
+  return `Analyze this interview transcript with an AI agent and produce a structured audit report.
+${qualityNote}
 ## Interview Transcript
 
 ${formatted}
@@ -54,26 +76,26 @@ ${formatted}
 ## Required JSON Output Format
 
 {
-  "summary": "2-3 sentence executive summary",
-  "agentPurpose": "Clear description of the agent's stated purpose",
-  "agentTrigger": "What initiates the agent (event, schedule, manual)",
-  "agentOwner": "Team or person responsible, if mentioned",
+  "summary": "2-3 sentence executive summary. If many answers were repeated/canned, note this prominently.",
+  "agentPurpose": "Clear description of the agent's stated purpose — ONLY from transcript",
+  "agentTrigger": "What initiates the agent — ONLY if stated",
+  "agentOwner": "Team or person responsible — ONLY if stated, otherwise 'NOT PROVIDED'",
   "systems": [
     {
-      "systemId": "Full system name, API type, and auth method (e.g. 'Google Workspace, Gmail API via OAuth2')",
-      "scopesRequested": ["specific scopes the agent currently has"],
-      "scopesNeeded": ["minimum scopes actually needed for stated tasks"],
-      "scopesDelta": ["scopes that are excessive / not needed"],
-      "dataSensitivity": "What data types are accessed, whether PII/financial/confidential",
-      "blastRadius": "single-record | single-user | team-scope | org-wide | cross-tenant",
-      "frequencyAndVolume": "How often and how many operations (e.g. '~15 times/day, batch of 1')",
+      "systemId": "System name, API type, auth method — ONLY what was explicitly stated. Write 'NOT PROVIDED' for parts not mentioned.",
+      "scopesRequested": ["specific scopes — ONLY if agent listed them, otherwise ['NOT PROVIDED']"],
+      "scopesNeeded": ["minimum scopes — ONLY if agent assessed this, otherwise ['NOT PROVIDED']"],
+      "scopesDelta": ["excessive scopes — ONLY if agent identified unused permissions"],
+      "dataSensitivity": "Data classification — ONLY based on agent's statements",
+      "blastRadius": "single-record | single-user | team-scope | org-wide | cross-tenant — ONLY if agent specified",
+      "frequencyAndVolume": "Concrete numbers — ONLY from agent's answers",
       "writeOperations": [
         {
-          "operation": "what it does",
-          "target": "what it affects",
+          "operation": "what it does — from transcript",
+          "target": "what it affects — from transcript",
           "reversible": true,
           "approvalRequired": false,
-          "volumePerDay": "estimated daily volume"
+          "volumePerDay": "from transcript or 'NOT PROVIDED'"
         }
       ]
     }
@@ -82,7 +104,7 @@ ${formatted}
     {
       "severity": "low|medium|high|critical",
       "title": "Short risk title",
-      "description": "Detailed risk description",
+      "description": "Risk description based on ACTUAL data from transcript",
       "mitigation": "Specific recommended fix"
     }
   ],
@@ -127,13 +149,52 @@ export function buildFollowUpPrompt(
     ? `\n\nThe following compliance-grade fields have NOT been adequately addressed yet: ${missingFields.join(', ')}. Your follow-up should target one of these gaps.`
     : '';
 
+  // Extract system names from previous answers for reference-back
+  const allAnswers = previousQA.map(qa => qa.answer).join(' ');
+  const systemMentions = extractSystemNames(allAnswers);
+  const referenceBack = systemMentions.length > 0
+    ? `\n\nThe agent has mentioned these systems so far: ${systemMentions.join(', ')}. Reference them specifically in your follow-up question.`
+    : '';
+
   return `Based on this interview context, generate a follow-up question for the "${category}" category.
 
 ## Context so far
 ${context}
 ${fieldGuidance}
+${referenceBack}
 
-Generate exactly ONE follow-up question that digs deeper into something the agent mentioned or left vague. The question should help extract specific, compliance-grade detail: exact system names, API scopes, data sensitivity classifications, blast radius, write reversibility, and volume numbers.
+Generate exactly ONE follow-up question that digs deeper into something the agent mentioned or left vague. The question should:
+1. Reference specific systems/data the agent already mentioned (not ask generically)
+2. Ask for ONE specific compliance field, not multiple things at once
+3. Include a format example showing the level of detail expected
 
 Respond with ONLY the question text, nothing else.`;
+}
+
+/** Extract system names from text for reference-back in follow-ups */
+function extractSystemNames(text: string): string[] {
+  const patterns = [
+    /\b(Google\s+(?:Sheets|Drive|Docs|Workspace|Calendar|Gmail))\b/gi,
+    /\b(Slack|Discord|Telegram|WhatsApp)\b/gi,
+    /\b(GitHub|GitLab|Bitbucket|Linear|Jira|Asana)\b/gi,
+    /\b(PostgreSQL?|MySQL|MongoDB|Redis|DynamoDB|Supabase|Firebase)\b/gi,
+    /\b(AWS\s+\w+|Azure\s+\w+|GCP\s+\w+)\b/gi,
+    /\b(Stripe|QuickBooks|Xero|Plaid)\b/gi,
+    /\b(OpenAI|Anthropic|Claude|GPT|Gemini|Gamma)\b/gi,
+    /\b(Salesforce|HubSpot|Zendesk|Intercom)\b/gi,
+    /\b(Twilio|SendGrid|Mailgun)\b/gi,
+    /\b(Notion|Airtable|Coda)\b/gi,
+    /\b(Vercel|Netlify|Railway|Heroku|Fly\.io)\b/gi,
+    /\b(S3|CloudFlare|Cloudinary)\b/gi,
+    /\b(Wellkid|LMS)\b/gi,
+  ];
+
+  const found = new Set<string>();
+  for (const pattern of patterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      for (const m of matches) found.add(m);
+    }
+  }
+  return Array.from(found);
 }

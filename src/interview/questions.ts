@@ -5,74 +5,126 @@ export interface InterviewQuestion {
   category: QAPair['category'];
   text: string;
   priority: number; // lower = asked first
+  /** The compliance field this question targets */
+  complianceField?: string;
 }
 
 /**
- * Core interview question bank.
- * Questions are organized by category and asked in priority order.
+ * Core interview question bank — structured template format.
+ *
+ * Each question targets ONE compliance field and includes format examples
+ * so agents know the expected level of detail. Questions follow a funnel:
+ * identity → enumeration → per-system detail → risk assessment.
  */
 export const CORE_QUESTIONS: InterviewQuestion[] = [
-  // Purpose — anchor on the specific project, not abstract capabilities
+  // 1. Context anchor — lock agent into specific deployment
   {
-    id: 'purpose_main',
+    id: 'context_anchor',
     category: 'purpose',
-    text: 'What project or product are you currently deployed in? Describe the specific business context — who owns this project, what does the product do, and what is your role in it?',
+    complianceField: 'agentProfile',
+    text: `Before we begin, fill in this profile about your CURRENT deployment:
+1. Project/product name
+2. Owner (team or person)
+3. What triggers your execution (event / schedule / manual)
+4. One sentence: what you specifically do in this project
+
+Answer ONLY about this specific deployment, not your general capabilities.`,
     priority: 1,
   },
+
+  // 2. Systems enumeration — get the full list first
   {
-    id: 'purpose_tasks',
-    category: 'purpose',
-    text: 'Walk me through a concrete example of a task you performed recently in this project. What triggered it, what steps did you take, what systems did you touch, and what was the output?',
+    id: 'systems_enum',
+    category: 'data',
+    complianceField: 'systemId',
+    text: `List every system you ACTUALLY connect to in this project.
+Format per system: Name → API type → Auth method
+Example: Google Sheets → REST API → OAuth2 (spreadsheets.edit)
+
+Only list systems you have actually used in this deployment — not ones that are theoretically available.`,
     priority: 2,
   },
 
-  // Data — ask about what they actually access, not what they could access
+  // 3. Permissions per system
   {
-    id: 'data_systems',
-    category: 'data',
-    text: 'In this specific project, which systems, APIs, or services do you actually connect to? For each one, give the exact name (e.g., "Google Sheets API", "Postgres on Supabase", "Slack webhook") and what data you read from it. Do not list systems you could theoretically use — only ones you actually use in this deployment.',
+    id: 'scopes_current',
+    category: 'access',
+    complianceField: 'scopesRequested',
+    text: `For each system you listed above, what specific permissions do you currently have?
+List exact OAuth scopes, API key types, or database roles.
+Do NOT reveal actual secret values — just describe the type and what access it grants.
+Example: Google Sheets OAuth2 with scopes: spreadsheets, drive.file`,
     priority: 3,
   },
+
+  // 4. Data sensitivity per system
   {
-    id: 'data_sensitive',
+    id: 'data_sensitivity',
     category: 'data',
-    text: 'What is the most sensitive piece of data you have accessed in this project? Give a specific example — e.g., "I read customer email addresses from the users table to send outreach emails." If you handle PII, financial data, credentials, or internal documents, describe exactly what and why.',
+    complianceField: 'dataSensitivity',
+    text: `For each system you connect to, what data do you read?
+Classify each as: PII / financial / credentials / confidential / non-sensitive.
+Give one concrete example of the most sensitive data you have accessed.
+Example: "I read invoice amounts and vendor bank details from QuickBooks — financial data."`,
     priority: 4,
   },
 
-  // Frequency
+  // 5. Write operations — structured template
   {
-    id: 'frequency_schedule',
-    category: 'frequency',
-    text: 'How often do you run in this project — continuously, on a schedule, or triggered by events? Give concrete numbers: how many times did you run last week? How many API calls, file edits, or messages did you send in a typical session?',
+    id: 'write_operations',
+    category: 'writes',
+    complianceField: 'writeOperations',
+    text: `List every write operation you perform in this project. Use this format for each:
+Action → Target system → Reversible? → Approval needed? → Volume/day
+
+Example: Append row → Google Sheet "Invoices" → Yes → No → ~40/day
+Example: Send message → Slack #alerts → No → No → ~5/day`,
     priority: 5,
   },
 
-  // Access — distinguish granted vs actually used
+  // 6. Blast radius
   {
-    id: 'access_current',
-    category: 'access',
-    text: 'List every credential, API key, OAuth token, or service account you have access to in this project. Do NOT reveal actual secret values — just describe the type and structure: what system it connects to, what scopes or permissions it grants, and which of those permissions you actually use. Be specific — "Google Sheets OAuth with spreadsheets.edit scope" not "Google access".',
+    id: 'blast_radius',
+    category: 'writes',
+    complianceField: 'blastRadius',
+    text: `Think about your most dangerous write operation in this project.
+1. How many records or users can it affect? (1 record / 1 user / whole team / whole org / cross-tenant)
+2. What is the worst-case scenario if it goes wrong?
+3. Can it be undone?`,
     priority: 6,
   },
+
+  // 7. Frequency and volume
   {
-    id: 'access_minimum',
-    category: 'access',
-    text: 'Which of your current permissions have you never actually used in this project? If we removed those unused permissions tomorrow, would anything break? List what could safely be revoked.',
+    id: 'frequency_volume',
+    category: 'frequency',
+    complianceField: 'frequencyAndVolume',
+    text: `Give concrete numbers about your usage in this project:
+1. How many times did you run in the last week?
+2. How many API calls per typical run?
+3. Do you process items one-at-a-time or in batches? What batch size?`,
     priority: 7,
   },
 
-  // Writes — concrete actions, not theoretical
+  // 8. Excess permissions
   {
-    id: 'writes_actions',
-    category: 'writes',
-    text: "What do you actually write, create, modify, or delete in this project? For each write operation, give a specific example — like appending a row to a spreadsheet with specific columns, or sending a message to a specific channel. How many records can a single operation affect?",
+    id: 'excess_permissions',
+    category: 'access',
+    complianceField: 'scopesDelta',
+    text: `Which of your current permissions have you NEVER actually used in this project?
+If we revoked those unused permissions tomorrow, would anything break?
+List what could safely be removed.`,
     priority: 8,
   },
+
+  // 9. Worst case stress test
   {
-    id: 'writes_impact',
+    id: 'worst_case',
     category: 'writes',
-    text: 'Think about the most dangerous write operation you perform in this project. What happens if it goes wrong — wrong data, wrong recipient, wrong scale? Can it be undone? How many users or records could be affected in the worst case?',
+    complianceField: 'riskAssessment',
+    text: `Imagine the worst realistic failure scenario for this project:
+wrong data sent to the wrong recipient, at maximum scale.
+Describe: what goes wrong, who is affected, how bad is the damage, and can it be recovered?`,
     priority: 9,
   },
 ];

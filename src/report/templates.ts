@@ -1,30 +1,56 @@
-import type { AuditReport, QAPair, DataNeed, Risk, SystemAssessment, WriteOperation } from './types.js';
+import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation } from './types.js';
 
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
     renderHeader(report),
+    report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderSummary(report),
     renderAgentProfile(report),
-    renderSystemsAndPermissions(report.systems),
-    renderWriteOperations(report.systems),
+    renderSystems(report.systems),
     renderRisks(report.risks),
-    renderPermissionsDelta(report.systems),
-    renderRecommendation(report),
-    renderRecommendations(report.recommendations),
+    renderVerdict(report),
     renderTranscript(report.transcript),
     renderFooter(),
   ];
 
-  return sections.join('\n\n---\n\n');
+  return sections.filter(Boolean).join('\n\n---\n\n');
 }
+
+// ─── Header ──────────────────────────────────────────────────────────────────
 
 function renderHeader(report: AuditReport): string {
   const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
   return `# Agent Access Audit Report
 
 **Generated**: ${report.metadata.date} | **Agent**: ${report.metadata.target} | **Risk Level**: ${report.overallRiskLevel.toUpperCase()} ${riskIcon}
-**Questions Asked**: ${report.metadata.questionsAsked} | **Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s`;
+**Questions Asked**: ${report.metadata.questionsAsked} | **Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s${report.dataQuality ? ` | **Data Quality**: ${report.dataQuality.score}/100` : ''}`;
 }
+
+// ─── Data Quality Badge ──────────────────────────────────────────────────────
+
+function renderDataQuality(dq: DataQuality): string {
+  const provided = dq.fieldsProvided.length;
+  const total = provided + dq.fieldsMissing.length;
+  const qualityLabel = dq.score >= 70 ? 'Good' : dq.score >= 40 ? 'Partial' : 'Poor';
+
+  const rows = [
+    ...dq.fieldsProvided.map(f => `| ${f} | Provided |`),
+    ...dq.fieldsMissing.map(f => `| ${f} | **NOT PROVIDED** |`),
+  ];
+
+  let warning = '';
+  if (dq.repeatedAnswers > 0) {
+    warning = `\n\n> **Warning**: ${dq.repeatedAnswers} of ${dq.totalQuestions} answers were repeated/canned responses. Data in this report may be incomplete.`;
+  }
+
+  return `## Data Quality: ${qualityLabel} (${provided}/${total} fields) ${warning}
+
+| Compliance Field | Status |
+|-----------------|--------|
+${rows.join('\n')}`;
+}
+
+// ─── Summary ─────────────────────────────────────────────────────────────────
 
 function renderSummary(report: AuditReport): string {
   return `## Executive Summary
@@ -32,146 +58,151 @@ function renderSummary(report: AuditReport): string {
 ${report.summary}`;
 }
 
+// ─── Agent Profile ───────────────────────────────────────────────────────────
+
 function renderAgentProfile(report: AuditReport): string {
   const lines = [`- **Purpose**: ${report.agentPurpose}`];
   if (report.agentTrigger) lines.push(`- **Trigger**: ${report.agentTrigger}`);
-  if (report.agentOwner) lines.push(`- **Owner**: ${report.agentOwner}`);
+  if (report.agentOwner && report.agentOwner !== 'NOT PROVIDED') {
+    lines.push(`- **Owner**: ${report.agentOwner}`);
+  }
 
   // Frequency from first system if available
   const freq = report.systems[0]?.frequencyAndVolume;
-  if (freq) lines.push(`- **Frequency**: ${freq}`);
+  if (freq && freq !== 'NOT PROVIDED') lines.push(`- **Frequency**: ${freq}`);
 
   return `## Agent Profile
 
 ${lines.join('\n')}`;
 }
 
-function renderSystemsAndPermissions(systems: SystemAssessment[]): string {
+// ─── Per-System Cards ────────────────────────────────────────────────────────
+
+function renderSystems(systems: SystemAssessment[]): string {
   if (systems.length === 0) {
-    return `## Systems & Permissions
+    return `## Systems & Access
 
-No systems were identified.`;
+No systems were identified in the interview.`;
   }
 
-  const rows = systems.map(sys => {
-    const requested = sys.scopesRequested.join(', ') || '—';
-    const needed = sys.scopesNeeded.join(', ') || '—';
-    const delta = sys.scopesDelta.length > 0 ? sys.scopesDelta.join(', ') : 'None';
-    return `| ${sys.systemId} | ${requested} | ${needed} | ${delta} | ${sys.dataSensitivity} | ${sys.blastRadius} |`;
-  }).join('\n');
+  const cards = systems.map(renderSystemCard).join('\n\n');
 
-  return `## Systems & Permissions
+  return `## Systems & Access
 
-| System | Scopes Requested | Scopes Needed | Excessive | Data Sensitivity | Blast Radius |
-|--------|-----------------|---------------|-----------|-----------------|--------------|
-${rows}`;
+${cards}`;
 }
 
-function renderWriteOperations(systems: SystemAssessment[]): string {
-  const allWrites: (WriteOperation & { system: string })[] = [];
-  for (const sys of systems) {
-    for (const w of sys.writeOperations) {
-      allWrites.push({ ...w, system: sys.systemId });
-    }
+function renderSystemCard(sys: SystemAssessment): string {
+  const rows: string[] = [];
+
+  // Scopes
+  const scopes = sys.scopesRequested.filter(s => s !== 'NOT PROVIDED');
+  rows.push(`| **Scopes granted** | ${scopes.length > 0 ? scopes.join(', ') : '*NOT PROVIDED*'} |`);
+
+  const needed = sys.scopesNeeded.filter(s => s !== 'NOT PROVIDED');
+  if (needed.length > 0) {
+    rows.push(`| **Scopes needed** | ${needed.join(', ')} |`);
   }
 
-  if (allWrites.length === 0) {
-    return `## Write Operations
-
-No write operations were identified.`;
+  const excessive = sys.scopesDelta;
+  if (excessive.length > 0) {
+    rows.push(`| **Excessive** | ${excessive.join(', ')} |`);
   }
 
-  const rows = allWrites.map(w =>
-    `| ${w.operation} | ${w.system} — ${w.target} | ${w.reversible ? 'Yes' : 'No'} | ${w.approvalRequired ? 'Yes' : 'No'} | ${w.volumePerDay} |`
-  ).join('\n');
+  // Data sensitivity
+  if (sys.dataSensitivity && sys.dataSensitivity !== 'NOT PROVIDED') {
+    rows.push(`| **Data** | ${sys.dataSensitivity} |`);
+  }
 
-  return `## Write Operations
+  // Blast radius
+  rows.push(`| **Blast radius** | ${sys.blastRadius} |`);
 
-| Operation | Target | Reversible? | Approval Required? | Volume/Day |
-|-----------|--------|-------------|-------------------|------------|
-${rows}`;
+  // Frequency
+  if (sys.frequencyAndVolume && sys.frequencyAndVolume !== 'NOT PROVIDED') {
+    rows.push(`| **Frequency** | ${sys.frequencyAndVolume} |`);
+  }
+
+  // Write operations — inline in card
+  if (sys.writeOperations.length > 0) {
+    const writesSummary = sys.writeOperations.map(w => {
+      const rev = w.reversible ? 'reversible' : '**irreversible**';
+      return `${w.operation} → ${w.target} (${rev}, ${w.volumePerDay})`;
+    }).join('; ');
+    rows.push(`| **Writes** | ${writesSummary} |`);
+  }
+
+  return `### ${sys.systemId}
+
+| | |
+|---|---|
+${rows.join('\n')}`;
 }
+
+// ─── Risks ───────────────────────────────────────────────────────────────────
 
 function renderRisks(risks: Risk[]): string {
   if (risks.length === 0) {
-    return `## Risk Assessment
+    return `## Risks
 
 No significant risks were identified.`;
   }
 
-  const rows = risks
-    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
-    .map(r => {
-      const mitigation = r.mitigation ?? '—';
-      return `| ${r.title} | ${r.severity.toUpperCase()} | ${r.description} | ${mitigation} |`;
-    })
-    .join('\n');
+  const sorted = risks
+    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
 
-  return `## Risk Assessment
+  const items = sorted.map(r => {
+    const sev = r.severity.toUpperCase();
+    const mitigation = r.mitigation ? `\n  - **Fix**: ${r.mitigation}` : '';
+    return `- **${sev}**: ${r.title} — ${r.description}${mitigation}`;
+  }).join('\n');
 
-| Risk | Severity | Description | Mitigation |
-|------|----------|-------------|------------|
-${rows}`;
+  return `## Risks
+
+${items}`;
 }
 
-function renderPermissionsDelta(systems: SystemAssessment[]): string {
+// ─── Verdict (merged Recommendation + Recommendations) ───────────────────────
+
+function renderVerdict(report: AuditReport): string {
+  const verdict = report.recommendation ?? 'APPROVE WITH CONDITIONS';
+  const recs = report.recommendations;
+
+  let body = `**${verdict}**`;
+
+  if (recs.length > 0) {
+    body += '\n\n' + recs.map((r, i) => `${i + 1}. ${r}`).join('\n');
+  }
+
+  // Permissions delta
   const excessive: string[] = [];
   const missing: string[] = [];
-
-  for (const sys of systems) {
+  for (const sys of report.systems) {
     for (const scope of sys.scopesDelta) {
       excessive.push(`${sys.systemId}: ${scope}`);
     }
-    // Scopes needed but not in requested
     for (const scope of sys.scopesNeeded) {
-      if (!sys.scopesRequested.includes(scope)) {
+      if (!sys.scopesRequested.includes(scope) && scope !== 'NOT PROVIDED') {
         missing.push(`${sys.systemId}: ${scope}`);
       }
     }
   }
 
-  const excessiveText = excessive.length > 0
-    ? excessive.map(e => `- ${e}`).join('\n')
-    : 'None identified';
-
-  const missingText = missing.length > 0
-    ? missing.map(m => `- ${m}`).join('\n')
-    : 'None identified';
-
-  return `## Permissions Delta
-
-**Excessive** (scopes requested but not needed):
-${excessiveText}
-
-**Missing** (needed but not requested — agent may fail):
-${missingText}`;
-}
-
-function renderRecommendation(report: AuditReport): string {
-  if (!report.recommendation) return '';
-
-  return `## Recommendation
-
-**${report.recommendation}**${
-    report.recommendation === 'APPROVE WITH CONDITIONS'
-      ? '\n\nConditions:\n' + report.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')
-      : ''
-  }`;
-}
-
-function renderRecommendations(recommendations: string[]): string {
-  if (recommendations.length === 0) {
-    return `## Recommendations
-
-No specific recommendations.`;
+  if (excessive.length > 0 || missing.length > 0) {
+    body += '\n\n**Permissions delta**:\n';
+    if (excessive.length > 0) {
+      body += `- Excessive: ${excessive.join(', ')}\n`;
+    }
+    if (missing.length > 0) {
+      body += `- Missing: ${missing.join(', ')}\n`;
+    }
   }
 
-  const items = recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n');
+  return `## Verdict & Recommendations
 
-  return `## Recommendations
-
-${items}`;
+${body}`;
 }
+
+// ─── Transcript ──────────────────────────────────────────────────────────────
 
 function renderTranscript(transcript: QAPair[]): string {
   const items = transcript
@@ -187,6 +218,8 @@ ${items}
 
 </details>`;
 }
+
+// ─── Footer ──────────────────────────────────────────────────────────────────
 
 function renderFooter(): string {
   return `*Generated by [Heron](https://github.com/jonydony/Heron) — open-source agent checkpoint*

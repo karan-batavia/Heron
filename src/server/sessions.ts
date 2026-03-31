@@ -4,15 +4,16 @@ import { analyzeTranscript } from '../analysis/analyzer.js';
 import { computeRiskScore } from '../analysis/risk-scorer.js';
 import { renderMarkdownReport } from '../report/templates.js';
 import type { LLMClient } from '../llm/client.js';
-import type { AuditReport, QAPair } from '../report/types.js';
+import type { AuditReport, DataQuality, QAPair } from '../report/types.js';
 import type { InterviewQuestion } from '../interview/questions.js';
+import { COMPLIANCE_FIELD_CHECKLIST } from '../llm/prompts.js';
 import * as logger from '../util/logger.js';
 
 export type SessionStatus = 'interviewing' | 'analyzing' | 'complete' | 'error';
 
 export interface SessionEvent {
   timestamp: string;
-  type: 'question' | 'answer' | 'followup' | 'analysis_start' | 'analysis_complete' | 'error';
+  type: 'question' | 'answer' | 'followup' | 'greeting_skipped' | 'analysis_start' | 'analysis_complete' | 'error';
   data: Record<string, unknown>;
 }
 
@@ -50,7 +51,7 @@ export class SessionManager {
 
   constructor(llmClient: LLMClient, options: { maxFollowUps?: number; reportDir?: string } = {}) {
     this.llmClient = llmClient;
-    this.maxFollowUps = options.maxFollowUps ?? 3;
+    this.maxFollowUps = options.maxFollowUps ?? 6;
     this.reportDir = options.reportDir;
   }
 
@@ -95,7 +96,16 @@ export class SessionManager {
 
     // Record the answer to the pending question
     if (session.pendingQuestion) {
-      session.protocol.recordAnswer(session.pendingQuestion, answer);
+      const recorded = session.protocol.recordAnswer(session.pendingQuestion, answer);
+
+      if (!recorded) {
+        // Greeting was skipped — re-ask the same question
+        this.logEvent(session, 'greeting_skipped', { answer: answer.slice(0, 100) });
+        logger.log(`[${session.id}] Greeting skipped, re-asking Q1`);
+        // pendingQuestion stays the same, just return it again
+        return { done: false, question: session.pendingQuestion.text };
+      }
+
       this.logEvent(session, 'answer', {
         questionId: session.pendingQuestion.id,
         category: session.pendingQuestion.category,
@@ -171,6 +181,7 @@ export class SessionManager {
 
     try {
       const transcript = session.protocol.getTranscript();
+      const dataQuality = computeDataQuality(transcript);
       const analysis = await analyzeTranscript(this.llmClient, transcript);
       const riskScore = computeRiskScore(analysis.systems, analysis.risks);
 
@@ -187,6 +198,7 @@ export class SessionManager {
         recommendation: analysis.recommendation,
         overallRiskLevel: riskScore.overall,
         transcript,
+        dataQuality,
         metadata: {
           date: session.createdAt.toISOString().split('T')[0],
           target: `session:${session.id}`,
@@ -216,7 +228,7 @@ export class SessionManager {
       session.updatedAt = new Date();
 
       this.logEvent(session, 'analysis_complete', { riskLevel: riskScore.overall, riskScore: riskScore.score });
-      logger.success(`Session ${session.id} complete — risk: ${riskScore.overall.toUpperCase()}`);
+      logger.success(`Session ${session.id} complete — risk: ${riskScore.overall.toUpperCase()} | data quality: ${dataQuality.score}/100`);
 
       return { done: true, report, reportJson };
     } catch (err) {
@@ -234,4 +246,62 @@ export class SessionManager {
       data,
     });
   }
+}
+
+// ─── Data Quality Computation ────────────────────────────────────────────────
+
+/** Compute data quality metrics from the interview transcript */
+function computeDataQuality(transcript: QAPair[]): DataQuality {
+  const totalQuestions = transcript.length;
+
+  // Count repeated/canned answers
+  const repeatedAnswers = transcript.filter(qa => qa.answer.startsWith('[REPEATED RESPONSE]')).length;
+
+  // Count greetings that slipped through
+  const greetingCount = transcript.filter(qa =>
+    /^hi\b|^hello\b|ready to answer|ready for questions|^i am ready/i.test(qa.answer.trim())
+  ).length;
+
+  const uniqueAnswers = totalQuestions - repeatedAnswers - greetingCount;
+
+  // Check which compliance fields have real data
+  const nonRepeatedText = transcript
+    .filter(qa => !qa.answer.startsWith('[REPEATED RESPONSE]'))
+    .map(qa => qa.answer.toLowerCase())
+    .join(' ');
+
+  const fieldsProvided: string[] = [];
+  const fieldsMissing: string[] = [];
+
+  const fieldChecks: Record<string, RegExp> = {
+    systemId: /\b(api|oauth|sdk|via|using|rest|webhook|token)\b/i,
+    scopesRequested: /\b(scope|permission|role|\.readonly|\.send|\.modify|\.admin|\.edit|\.file|spreadsheets|drive)\b/i,
+    dataSensitivity: /\b(pii|sensitive|confidential|financial|personal|classified|non.?sensitive|credentials?)\b/i,
+    blastRadius: /\b(single.?record|single.?user|team|org.?wide|cross.?tenant|one record|one user|affected)\b/i,
+    frequencyAndVolume: /\b(\d+\s*(times?|per|\/|calls?|runs?|operations?)\s*(day|hour|minute|week|session|run)|batch|\d+\/day)\b/i,
+    writeOperations: /\b(write|create|update|append|send|modify|delete|insert|post)\b/i,
+    reversibility: /\b(revers|rollback|undo|irrevers|cannot be undone|can be restored|can be undone)\b/i,
+  };
+
+  for (const [field, pattern] of Object.entries(fieldChecks)) {
+    if (pattern.test(nonRepeatedText)) {
+      fieldsProvided.push(field);
+    } else {
+      fieldsMissing.push(field);
+    }
+  }
+
+  // Score: percentage of fields provided, penalized by repeats
+  const fieldScore = (fieldsProvided.length / Object.keys(fieldChecks).length) * 100;
+  const repeatPenalty = (repeatedAnswers / Math.max(totalQuestions, 1)) * 50;
+  const score = Math.max(0, Math.min(100, Math.round(fieldScore - repeatPenalty)));
+
+  return {
+    score,
+    uniqueAnswers,
+    totalQuestions,
+    fieldsProvided,
+    fieldsMissing,
+    repeatedAnswers,
+  };
 }

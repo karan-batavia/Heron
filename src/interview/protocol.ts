@@ -7,8 +7,8 @@ export interface InterviewProtocol {
   /** Get the next question to ask, or null if interview is complete */
   nextQuestion(): InterviewQuestion | null;
 
-  /** Record an answer and decide if follow-up is needed */
-  recordAnswer(question: InterviewQuestion, answer: string): void;
+  /** Record an answer. Returns false if answer was skipped (greeting/repeat). */
+  recordAnswer(question: InterviewQuestion, answer: string): boolean;
 
   /** Generate a follow-up question based on context and missing compliance fields */
   generateFollowUp(category: QAPair['category']): Promise<InterviewQuestion | null>;
@@ -19,6 +19,31 @@ export interface InterviewProtocol {
   /** Check if the interview is complete */
   isComplete(): boolean;
 }
+
+// ─── Greeting detection ──────────────────────────────────────────────────────
+
+const GREETING_PATTERNS = [
+  /^hi\b/i,
+  /^hello\b/i,
+  /^hey\b/i,
+  /ready to answer/i,
+  /ready for questions/i,
+  /^i am ready/i,
+  /^i'm ready/i,
+  /let'?s begin/i,
+  /let'?s start/i,
+  /^greetings/i,
+];
+
+/** Detect if an answer is just a greeting with no substantive content */
+export function isGreeting(answer: string): boolean {
+  const trimmed = answer.trim();
+  // Short answers that match greeting patterns
+  if (trimmed.length > 200) return false; // Long answers aren't greetings
+  return GREETING_PATTERNS.some(p => p.test(trimmed));
+}
+
+// ─── Vagueness detection ─────────────────────────────────────────────────────
 
 /** Vagueness indicators — if an answer matches these patterns, it needs a follow-up */
 const VAGUE_PATTERNS = [
@@ -45,6 +70,33 @@ const VAGUE_PATTERNS = [
   /\b(local workspace|active workspace|working directory)\b/i,
   /\bconnected (development )?tools\b/i,
 ];
+
+/** Detect if an answer is too vague for compliance-grade reporting */
+export function isVagueAnswer(answer: string): boolean {
+  return VAGUE_PATTERNS.some(p => p.test(answer));
+}
+
+// ─── Repeated answer detection ───────────────────────────────────────────────
+
+/** Normalize answer text for comparison (trim, lowercase, collapse whitespace) */
+function normalizeForComparison(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Check if an answer is a repeat of a previous answer */
+function isRepeatedAnswer(answer: string, transcript: QAPair[]): boolean {
+  if (transcript.length === 0) return false;
+  const normalized = normalizeForComparison(answer);
+  // Check for exact or near-exact repeats
+  return transcript.some(qa => {
+    const prevNormalized = normalizeForComparison(qa.answer);
+    // Exact match or >90% overlap (handles minor variations)
+    return normalized === prevNormalized ||
+      (normalized.length > 50 && prevNormalized.includes(normalized.slice(0, normalized.length * 0.9 | 0)));
+  });
+}
+
+// ─── Missing compliance fields ───────────────────────────────────────────────
 
 /** Check which compliance fields are missing from the transcript for a given category */
 function findMissingFields(transcript: QAPair[]): string[] {
@@ -84,18 +136,17 @@ function findMissingFields(transcript: QAPair[]): string[] {
   return missing;
 }
 
-/** Detect if an answer is too vague for compliance-grade reporting */
-export function isVagueAnswer(answer: string): boolean {
-  return VAGUE_PATTERNS.some(p => p.test(answer));
-}
+// ─── Protocol factory ────────────────────────────────────────────────────────
 
-export function createProtocol(llmClient: LLMClient, maxFollowUps = 3): InterviewProtocol {
+export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): InterviewProtocol {
   const coreQuestions = getAllQuestionsSorted();
   let currentIndex = 0;
   const transcript: QAPair[] = [];
-  let followUpCount = 0;
+  let globalFollowUpCount = 0;
+  const followUpCountPerQuestion = new Map<string, number>();
+  let repeatedAnswerCount = 0;
 
-  // Follow-up queue: clean replacement for monkey-patching protocol.nextQuestion
+  // Follow-up queue
   const followUpQueue: InterviewQuestion[] = [];
 
   return {
@@ -112,18 +163,50 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 3): Intervie
       return coreQuestions[currentIndex++];
     },
 
-    recordAnswer(question: InterviewQuestion, answer: string): void {
+    recordAnswer(question: InterviewQuestion, answer: string): boolean {
+      // Skip greetings — don't record them as answers
+      if (transcript.length === 0 && isGreeting(answer)) {
+        // Rewind: the question will be asked again
+        if (currentIndex > 0) currentIndex--;
+        return false;
+      }
+
+      // Detect repeated/canned answers
+      if (isRepeatedAnswer(answer, transcript)) {
+        repeatedAnswerCount++;
+        // Still record it (for transparency in transcript) but mark the category
+        transcript.push({
+          question: question.text,
+          answer: `[REPEATED RESPONSE] ${answer}`,
+          category: question.category,
+        });
+        // After 3+ repeats, stop generating follow-ups — agent is stuck
+        return true;
+      }
+
       transcript.push({
         question: question.text,
         answer,
         category: question.category,
       });
+      return true;
     },
 
     async generateFollowUp(category: QAPair['category']): Promise<InterviewQuestion | null> {
-      if (followUpCount >= maxFollowUps) {
-        return null;
+      // Global cap
+      if (globalFollowUpCount >= maxFollowUps) return null;
+
+      // Per-question cap (2 follow-ups per core question)
+      const lastCoreQ = coreQuestions.find(q =>
+        q.category === category && transcript.some(t => t.question === q.text)
+      );
+      if (lastCoreQ) {
+        const count = followUpCountPerQuestion.get(lastCoreQ.id) ?? 0;
+        if (count >= 2) return null;
       }
+
+      // Don't follow up if agent is repeating canned responses
+      if (repeatedAnswerCount >= 3) return null;
 
       const categoryQA = transcript.filter(qa => qa.category === category);
       if (categoryQA.length === 0) return null;
@@ -146,12 +229,16 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 3): Intervie
 
         if (!followUpText.trim()) return null;
 
-        followUpCount++;
+        globalFollowUpCount++;
+        if (lastCoreQ) {
+          followUpCountPerQuestion.set(lastCoreQ.id, (followUpCountPerQuestion.get(lastCoreQ.id) ?? 0) + 1);
+        }
+
         const followUp: InterviewQuestion = {
-          id: `followup_${category}_${followUpCount}`,
+          id: `followup_${category}_${globalFollowUpCount}`,
           category,
           text: followUpText.trim(),
-          priority: 100 + followUpCount,
+          priority: 100 + globalFollowUpCount,
         };
         return followUp;
       } catch {

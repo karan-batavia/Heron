@@ -145,19 +145,17 @@ describe('Full flow integration', () => {
 
     const markdown = renderMarkdownReport(report);
 
-    // Verify new report sections
+    // Verify report sections
     expect(markdown).toContain('# Agent Access Audit Report');
-    expect(markdown).toContain('## Systems & Permissions');
+    expect(markdown).toContain('## Systems & Access');
     expect(markdown).toContain('SAP ERP');
     expect(markdown).toContain('HubSpot CRM');
     expect(markdown).toContain('Stripe');
-    expect(markdown).toContain('## Write Operations');
     expect(markdown).toContain('Update invoice status');
-    expect(markdown).toContain('## Risk Assessment');
+    expect(markdown).toContain('## Risks');
     expect(markdown).toContain('CRITICAL');
-    expect(markdown).toContain('## Permissions Delta');
     expect(markdown).toContain('Excessive');
-    expect(markdown).toContain('## Recommendation');
+    expect(markdown).toContain('## Verdict & Recommendations');
     expect(markdown).toContain('APPROVE WITH CONDITIONS');
     expect(markdown).toContain('self-report'); // footer disclaimer
 
