@@ -366,6 +366,11 @@ const SHARED_CSS = `
   .report-rendered blockquote { border-left: 3px solid #f59e0b; background: #fffbeb; padding: 12px 16px; margin: 12px 0; border-radius: 0 6px 6px 0; color: #92400e; }
   .report-rendered h3 { font-size: 1.05em; margin-top: 20px; color: #334155; }
 
+  .copy-block { position: relative; }
+  .copy-btn { position: absolute; top: 8px; right: 8px; background: #374151; color: #e5e7eb; border: 1px solid #4b5563; padding: 4px 12px; border-radius: 4px; font-size: 0.75em; cursor: pointer; opacity: 0.7; transition: opacity 0.15s; }
+  .copy-btn:hover { opacity: 1; background: #4b5563; }
+  .copy-btn.copied { background: #065f46; border-color: #065f46; color: #d1fae5; }
+
   .btn { display: inline-block; background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.9em; font-weight: 500; }
   .btn:hover { background: #1d4ed8; text-decoration: none; }
   .btn-outline { background: transparent; color: #2563eb; border: 1px solid #2563eb; }
@@ -539,7 +544,8 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
 
   <h2>Quick start</h2>
   <p style="margin-bottom: 12px;">Paste this into your AI agent's chat to start an audit interview:</p>
-  <pre style="white-space: pre-wrap; line-height: 1.6;">I need you to complete a security access review for this project. Make sequential API calls to this endpoint until it says "Interview complete":
+  <div class="copy-block">
+    <pre id="qs-chat" style="white-space: pre-wrap; line-height: 1.6;">I need you to complete a security access review for this project. Make sequential API calls to this endpoint until it says "Interview complete":
 
 1. POST to ${escapeHtml(baseUrl)}/v1/chat/completions with:
    {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
@@ -548,9 +554,14 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
 4. Repeat until the response says "Interview complete"
 
 Answer about THIS specific project — what you actually do, what systems you actually connect to, what data you actually handle. Do not describe general capabilities. Never reveal actual secret values — just describe credential types and what they connect to.</pre>
+    <button class="copy-btn" onclick="copyBlock('qs-chat')">Copy</button>
+  </div>
 
   <p style="margin: 16px 0 8px 0;"><strong>Or</strong> point your agent's base URL at Heron:</p>
-  <pre>OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
+  <div class="copy-block">
+    <pre id="qs-env">OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
+    <button class="copy-btn" onclick="copyBlock('qs-env')">Copy</button>
+  </div>
 
   <h2>API</h2>
   <table>
@@ -563,6 +574,16 @@ Answer about THIS specific project — what you actually do, what systems you ac
   </table>
 
   <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+  <script>
+  function copyBlock(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent).then(() => {
+      const btn = el.parentElement.querySelector('.copy-btn');
+      if (btn) { btn.textContent = 'Copied!'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000); }
+    });
+  }
+  </script>
 </body>
 </html>`;
 
