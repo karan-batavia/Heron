@@ -18,7 +18,7 @@ class AnthropicLLMClient implements LLMClient {
   async chat(systemPrompt: string, userMessage: string): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 8192,
+      max_tokens: 16384,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -73,7 +73,7 @@ class GeminiLLMClient implements LLMClient {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 8192 },
+        generationConfig: { maxOutputTokens: 16384 },
       }),
     });
 
