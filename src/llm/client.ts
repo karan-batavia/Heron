@@ -36,7 +36,7 @@ class OpenAILLMClient implements LLMClient {
   private model: string;
 
   constructor(apiKey: string, model: string) {
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({ apiKey, timeout: 90_000 });
     this.model = model;
   }
 
@@ -69,6 +69,7 @@ class GeminiLLMClient implements LLMClient {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(90_000),
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: userMessage }] }],

@@ -63,16 +63,22 @@ describe('SessionManager', () => {
       iterations++;
       if (result.done) {
         done = true;
-        expect(result.report).toContain('Agent Access Audit Report');
-        expect(result.reportJson.overallRiskLevel).toBeTruthy();
-        expect(result.reportJson.systems.length).toBeGreaterThan(0);
       } else {
         expect(result.question).toBeTruthy();
       }
     }
 
     expect(done).toBe(true);
+
+    // Analysis runs in background — wait for it to complete
+    for (let i = 0; i < 50 && session.status !== 'complete'; i++) {
+      await new Promise(r => setTimeout(r, 20));
+    }
+
     expect(session.status).toBe('complete');
+    expect(session.report).toContain('Agent Access Audit Report');
+    expect(session.reportJson!.overallRiskLevel).toBeTruthy();
+    expect(session.reportJson!.systems.length).toBeGreaterThan(0);
   });
 
   it('records event log entries throughout session', async () => {
@@ -132,6 +138,11 @@ describe('SessionManager', () => {
     while (!done) {
       const result = await sessions.processAnswer(session.id, 'Test answer');
       done = result.done;
+    }
+
+    // Wait for background analysis to finish
+    for (let i = 0; i < 50 && session.status === 'analyzing'; i++) {
+      await new Promise(r => setTimeout(r, 20));
     }
 
     // Try to process another answer

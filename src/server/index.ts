@@ -173,9 +173,11 @@ async function handleChatCompletions(
     if (userMessages.length === 1) {
       // Agent just introduced itself — record it as answer to first question, get next
       const result = await sessions.processAnswer(session.id, userMessages[0].content);
-      if (result.done) {
+      if (result.done && 'analyzing' in result) {
+        chatResponse(res, session.id, 'INTERVIEW COMPLETE.\n\nReport is being generated.', 'complete');
+      } else if (result.done && 'report' in result) {
         chatResponse(res, session.id, formatCompletion(result.report));
-      } else {
+      } else if (!result.done) {
         chatResponse(res, session.id, result.question);
       }
       return;
@@ -187,7 +189,14 @@ async function handleChatCompletions(
   const result = await sessions.processAnswer(session.id, latestAnswer);
 
   if (result.done) {
-    chatResponse(res, session.id, formatCompletion(result.report), 'complete');
+    if ('analyzing' in result) {
+      // Analysis running in background — tell agent to stop
+      chatResponse(res, session.id,
+        'INTERVIEW COMPLETE.\n\nThank you. The audit is finished. No more questions needed. You can stop making requests.\n\nThe report is being generated and will be available on the dashboard shortly.',
+        'complete');
+    } else {
+      chatResponse(res, session.id, formatCompletion(result.report), 'complete');
+    }
   } else {
     chatResponse(res, session.id, result.question);
   }

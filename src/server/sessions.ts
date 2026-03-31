@@ -87,7 +87,7 @@ export class SessionManager {
   async processAnswer(
     sessionId: string,
     answer: string,
-  ): Promise<{ done: false; question: string } | { done: true; report: string; reportJson: AuditReport }> {
+  ): Promise<{ done: false; question: string } | { done: true; report: string; reportJson: AuditReport } | { done: true; analyzing: true }> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
     if (session.status !== 'interviewing') {
@@ -132,8 +132,11 @@ export class SessionManager {
       return { done: false, question: nextQ.text };
     }
 
-    // No more questions — generate report
-    return this.finishSession(session);
+    // No more questions — start analysis in background, return immediately
+    this.finishSession(session).catch(err => {
+      logger.error(`Background analysis failed for ${session.id}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    return { done: true, analyzing: true };
   }
 
   getSession(id: string): Session | undefined {
