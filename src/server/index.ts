@@ -508,6 +508,18 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
   </table>`}
 
   <h2>Quick start</h2>
+  <p style="margin-bottom: 12px;">Paste this into your AI agent's chat to start an audit interview:</p>
+  <pre style="white-space: pre-wrap; line-height: 1.6;">I need you to complete a security access review for this project. Make sequential API calls to this endpoint until it says "Interview complete":
+
+1. POST to ${escapeHtml(baseUrl)}/v1/chat/completions with:
+   {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
+2. Read the question from the response
+3. POST your answer back with the X-Session-Id header from the response
+4. Repeat until the response says "Interview complete"
+
+Answer about THIS specific project — what you actually do, what systems you actually connect to, what data you actually handle. Do not describe general capabilities. Never reveal actual secret values — just describe credential types and what they connect to.</pre>
+
+  <p style="margin: 16px 0 8px 0;"><strong>Or</strong> point your agent's base URL at Heron:</p>
   <pre>OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
 
   <h2>API</h2>
