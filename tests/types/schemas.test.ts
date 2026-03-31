@@ -19,9 +19,10 @@ describe('Zod schemas', () => {
       expect(severitySchema.parse('critical')).toBe('critical');
     });
 
-    it('rejects invalid severity', () => {
-      expect(() => severitySchema.parse('extreme')).toThrow();
-      expect(() => severitySchema.parse('')).toThrow();
+    it('normalizes unknown severity to medium', () => {
+      expect(severitySchema.parse('extreme')).toBe('medium');
+      expect(severitySchema.parse('info')).toBe('low');
+      expect(severitySchema.parse('none')).toBe('low');
     });
   });
 

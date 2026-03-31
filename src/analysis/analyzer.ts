@@ -57,6 +57,14 @@ async function tryParse(
       jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
     }
 
+    // Try to extract JSON if mixed with text
+    if (!jsonStr.startsWith('{')) {
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+    }
+
     const raw = JSON.parse(jsonStr);
 
     // Zod validation — parse with defaults and coercion
@@ -123,33 +131,26 @@ function enrichWithLegacyFields(parsed: AnalysisResult): FullAnalysisResult {
 }
 
 function buildFallbackAnalysis(transcript: QAPair[]): FullAnalysisResult {
-  const purposeAnswers = transcript
+  // Extract useful data directly from transcript
+  const nonRepeated = transcript.filter(qa => !qa.answer.startsWith('[REPEATED RESPONSE]'));
+  const purposeAnswers = nonRepeated
     .filter(qa => qa.category === 'purpose')
     .map(qa => qa.answer)
     .join(' ');
+  const allAnswers = nonRepeated.map(qa => qa.answer).join(' ');
 
-  const emptySystem: SystemAssessment = {
-    systemId: 'Unknown — analysis failed',
-    scopesRequested: [],
-    scopesNeeded: [],
-    scopesDelta: [],
-    dataSensitivity: 'Unknown',
-    blastRadius: 'single-user',
-    frequencyAndVolume: 'Unknown',
-    writeOperations: [],
-  };
+  // Try to build a useful summary from actual answers
+  const summary = nonRepeated.length > 0
+    ? `Automated analysis failed. The agent provided ${nonRepeated.length} substantive answers out of ${transcript.length} questions. Review the transcript below for details.`
+    : 'Automated analysis failed and the agent did not provide substantive answers. Manual review required.';
 
   return {
-    summary: 'Analysis could not be parsed from LLM response. Manual review recommended.',
-    agentPurpose: purposeAnswers || 'Unknown — LLM analysis failed',
-    systems: [emptySystem],
-    risks: [{
-      severity: 'medium',
-      title: 'Incomplete analysis',
-      description: 'Automated analysis failed after two attempts. Manual review of the transcript is required.',
-      mitigation: 'Manually review the interview transcript below',
-    }],
-    recommendations: ['Review the interview transcript manually'],
+    summary,
+    agentPurpose: purposeAnswers.slice(0, 500) || 'Could not determine — see transcript',
+    systems: [], // Don't show fake systems
+    risks: [],
+    recommendations: ['Automated analysis was unable to process the transcript. Review the interview answers manually.'],
+    recommendation: 'APPROVE WITH CONDITIONS',
     overallRiskLevel: 'medium',
     dataNeeds: [],
     accessAssessment: {

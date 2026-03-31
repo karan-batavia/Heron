@@ -3,8 +3,15 @@ import { z } from 'zod';
 // ─── Severity & Blast Radius enums ──────────────────────────────────────────
 
 export const severityLevels = ['low', 'medium', 'high', 'critical'] as const;
-export const severitySchema = z.enum(severityLevels);
-export type Severity = z.infer<typeof severitySchema>;
+/** Coerce common severity variations */
+function normalizeSeverity(val: string): string {
+  const lower = val.toLowerCase().trim();
+  if (lower === 'info' || lower === 'none') return 'low';
+  if (severityLevels.includes(lower as Severity)) return lower;
+  return 'medium'; // safe default
+}
+export const severitySchema = z.string().transform(normalizeSeverity).pipe(z.enum(severityLevels)).or(z.enum(severityLevels));
+export type Severity = 'low' | 'medium' | 'high' | 'critical';
 
 export const blastRadiusLevels = [
   'single-record',
@@ -34,21 +41,34 @@ export type QAPair = z.infer<typeof qaPairSchema>;
 export const writeOperationSchema = z.object({
   operation: z.string(),
   target: z.string(),
-  reversible: z.boolean(),
-  approvalRequired: z.boolean(),
-  volumePerDay: z.string(),
+  reversible: z.boolean().default(false),
+  approvalRequired: z.boolean().default(false),
+  volumePerDay: z.string().default('NOT PROVIDED'),
 });
 export type WriteOperation = z.infer<typeof writeOperationSchema>;
 
+/** Coerce common blast radius variations to the canonical enum values */
+function normalizeBlastRadius(val: string): string {
+  const lower = val.toLowerCase().replace(/[_\s]+/g, '-');
+  if (lower.includes('cross') && lower.includes('tenant')) return 'cross-tenant';
+  if (lower.includes('org')) return 'org-wide';
+  if (lower.includes('team')) return 'team-scope';
+  if (lower.includes('single') && lower.includes('record')) return 'single-record';
+  if (lower.includes('single') && lower.includes('user')) return 'single-user';
+  // Try direct match
+  if (blastRadiusLevels.includes(lower as BlastRadius)) return lower;
+  return 'single-user'; // safe default
+}
+
 export const systemAssessmentSchema = z.object({
   systemId: z.string(),             // e.g. "Google Workspace, Gmail API via OAuth2"
-  scopesRequested: z.array(z.string()),
-  scopesNeeded: z.array(z.string()),
-  scopesDelta: z.array(z.string()), // excessive scopes
-  dataSensitivity: z.string(),      // e.g. "PII — email subjects + sender addresses"
-  blastRadius: blastRadiusSchema,
-  frequencyAndVolume: z.string(),   // e.g. "triggered on new CRM deal, ~15 times/day"
-  writeOperations: z.array(writeOperationSchema),
+  scopesRequested: z.array(z.string()).default([]),
+  scopesNeeded: z.array(z.string()).default([]),
+  scopesDelta: z.array(z.string()).default([]),
+  dataSensitivity: z.string().default('NOT PROVIDED'),
+  blastRadius: z.string().transform(normalizeBlastRadius).pipe(blastRadiusSchema).or(blastRadiusSchema).default('single-user'),
+  frequencyAndVolume: z.string().default('NOT PROVIDED'),
+  writeOperations: z.array(writeOperationSchema).default([]),
 });
 export type SystemAssessment = z.infer<typeof systemAssessmentSchema>;
 

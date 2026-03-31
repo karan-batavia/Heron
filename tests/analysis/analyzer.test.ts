@@ -93,11 +93,8 @@ describe('analyzer', () => {
 
     const result = await analyzeTranscript(mockLLM, sampleTranscript);
 
-    expect(result.summary).toContain('could not be parsed');
-    expect(result.risks.length).toBe(1);
-    expect(result.risks[0].title).toBe('Incomplete analysis');
-    expect(result.systems.length).toBe(1);
-    expect(result.systems[0].systemId).toContain('Unknown');
+    expect(result.summary).toContain('analysis failed');
+    expect(result.systems.length).toBe(0); // no fake systems in fallback
   });
 
   it('falls back when LLM returns Zod-invalid structure', async () => {
@@ -114,7 +111,7 @@ describe('analyzer', () => {
 
     const result = await analyzeTranscript(mockLLM, sampleTranscript);
     // Should hit fallback since Zod validation fails
-    expect(result.summary).toContain('could not be parsed');
+    expect(result.summary).toContain('analysis failed');
   });
 
   it('derives legacy accessAssessment from per-system data', async () => {

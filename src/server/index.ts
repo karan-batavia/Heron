@@ -363,6 +363,8 @@ const SHARED_CSS = `
   .report-rendered li { margin: 4px 0; }
   .report-rendered details { margin-top: 16px; }
   .report-rendered summary { cursor: pointer; font-weight: 600; color: #2563eb; }
+  .report-rendered blockquote { border-left: 3px solid #f59e0b; background: #fffbeb; padding: 12px 16px; margin: 12px 0; border-radius: 0 6px 6px 0; color: #92400e; }
+  .report-rendered h3 { font-size: 1.05em; margin-top: 20px; color: #334155; }
 
   .btn { display: inline-block; background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.9em; font-weight: 500; }
   .btn:hover { background: #1d4ed8; text-decoration: none; }
@@ -408,14 +410,32 @@ function markdownToHtml(md: string): string {
     return `<table>${thead}<tbody>${tbody}</tbody></table>`;
   });
 
+  // Blockquotes
+  html = html.replace(/((?:^&gt; .+$\n?)+)/gm, (block) => {
+    const content = block.replace(/^&gt; /gm, '').trim();
+    return `<blockquote>${content}</blockquote>`;
+  });
+
+  // Unordered lists
+  html = html.replace(/((?:^- .+$\n?)+)/gm, (block) => {
+    const items = block.trim().split('\n').map(l => {
+      const content = l.replace(/^- /, '');
+      return `<li>${content}</li>`;
+    }).join('');
+    return `<ul>${items}</ul>`;
+  });
+
   // Ordered lists
   html = html.replace(/((?:^\d+\. .+$\n?)+)/gm, (block) => {
     const items = block.trim().split('\n').map(l => `<li>${l.replace(/^\d+\.\s+/, '')}</li>`).join('');
     return `<ol>${items}</ol>`;
   });
 
+  // Italic (single *)
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
   // Paragraphs — wrap remaining loose text lines
-  html = html.replace(/^(?!<[htouda]|<li|<hr|<str|<sum|<det|$)(.+)$/gm, '<p>$1</p>');
+  html = html.replace(/^(?!<[htouda\-bl]|<li|<hr|<str|<sum|<det|<ul|<ol|<em|$)(.+)$/gm, '<p>$1</p>');
 
   // Clean up empty paragraphs
   html = html.replace(/<p>\s*<\/p>/g, '');
