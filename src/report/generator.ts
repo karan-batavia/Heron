@@ -23,17 +23,21 @@ export async function generateReport(
   // 1. Analyze transcript with LLM
   const analysis = await analyzeTranscript(llmClient, session.transcript);
 
-  // 2. Compute risk score
-  const riskScore = computeRiskScore(analysis.accessAssessment, analysis.risks);
+  // 2. Compute risk score from structured per-system data
+  const riskScore = computeRiskScore(analysis.systems, analysis.risks);
 
   // 3. Build report object
   const report: AuditReport = {
     summary: analysis.summary,
     agentPurpose: analysis.agentPurpose,
+    agentTrigger: analysis.agentTrigger,
+    agentOwner: analysis.agentOwner,
+    systems: analysis.systems,
     dataNeeds: analysis.dataNeeds,
     accessAssessment: analysis.accessAssessment,
     risks: analysis.risks,
     recommendations: analysis.recommendations,
+    recommendation: analysis.recommendation,
     overallRiskLevel: riskScore.overall,
     transcript: session.transcript,
     metadata: {

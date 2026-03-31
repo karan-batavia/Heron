@@ -1,20 +1,15 @@
-import type { AuditReport, QAPair, DataNeed, AccessClaim, Risk } from './types.js';
-
-const RISK_ICONS: Record<string, string> = {
-  low: 'LOW',
-  medium: 'MEDIUM',
-  high: 'HIGH',
-  critical: 'CRITICAL',
-};
+import type { AuditReport, QAPair, DataNeed, Risk, SystemAssessment, WriteOperation } from './types.js';
 
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
     renderHeader(report),
     renderSummary(report),
-    renderPurpose(report),
-    renderDataNeeds(report.dataNeeds),
-    renderAccessAssessment(report),
+    renderAgentProfile(report),
+    renderSystemsAndPermissions(report.systems),
+    renderWriteOperations(report.systems),
     renderRisks(report.risks),
+    renderPermissionsDelta(report.systems),
+    renderRecommendation(report),
     renderRecommendations(report.recommendations),
     renderTranscript(report.transcript),
     renderFooter(),
@@ -24,13 +19,11 @@ export function renderMarkdownReport(report: AuditReport): string {
 }
 
 function renderHeader(report: AuditReport): string {
-  return `# Agent Audit Report
+  const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
+  return `# Agent Access Audit Report
 
-**Date**: ${report.metadata.date}
-**Target**: ${report.metadata.target}
-**Risk Level**: ${report.overallRiskLevel.toUpperCase()}
-**Questions Asked**: ${report.metadata.questionsAsked}
-**Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s`;
+**Generated**: ${report.metadata.date} | **Agent**: ${report.metadata.target} | **Risk Level**: ${report.overallRiskLevel.toUpperCase()} ${riskIcon}
+**Questions Asked**: ${report.metadata.questionsAsked} | **Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s`;
 }
 
 function renderSummary(report: AuditReport): string {
@@ -39,71 +32,131 @@ function renderSummary(report: AuditReport): string {
 ${report.summary}`;
 }
 
-function renderPurpose(report: AuditReport): string {
-  return `## Agent Purpose
+function renderAgentProfile(report: AuditReport): string {
+  const lines = [`- **Purpose**: ${report.agentPurpose}`];
+  if (report.agentTrigger) lines.push(`- **Trigger**: ${report.agentTrigger}`);
+  if (report.agentOwner) lines.push(`- **Owner**: ${report.agentOwner}`);
 
-${report.agentPurpose}`;
+  // Frequency from first system if available
+  const freq = report.systems[0]?.frequencyAndVolume;
+  if (freq) lines.push(`- **Frequency**: ${freq}`);
+
+  return `## Agent Profile
+
+${lines.join('\n')}`;
 }
 
-function renderDataNeeds(needs: DataNeed[]): string {
-  if (needs.length === 0) {
-    return `## Data Needs
+function renderSystemsAndPermissions(systems: SystemAssessment[]): string {
+  if (systems.length === 0) {
+    return `## Systems & Permissions
 
-No data needs were identified.`;
+No systems were identified.`;
   }
 
-  const rows = needs
-    .map(n => `| ${n.dataType} | ${n.system} | ${n.justification} |`)
-    .join('\n');
+  const rows = systems.map(sys => {
+    const requested = sys.scopesRequested.join(', ') || '—';
+    const needed = sys.scopesNeeded.join(', ') || '—';
+    const delta = sys.scopesDelta.length > 0 ? sys.scopesDelta.join(', ') : 'None';
+    return `| ${sys.systemId} | ${requested} | ${needed} | ${delta} | ${sys.dataSensitivity} | ${sys.blastRadius} |`;
+  }).join('\n');
 
-  return `## Data Needs
+  return `## Systems & Permissions
 
-| Data Type | System | Justification |
-|-----------|--------|---------------|
+| System | Scopes Requested | Scopes Needed | Excessive | Data Sensitivity | Blast Radius |
+|--------|-----------------|---------------|-----------|-----------------|--------------|
 ${rows}`;
 }
 
-function renderAccessAssessment(report: AuditReport): string {
-  const { claimed, excessive, missing } = report.accessAssessment;
-
-  const rows: string[] = [];
-
-  for (const item of claimed) {
-    const isExcessive = excessive.some(e => e.resource === item.resource);
-    const status = isExcessive ? 'Excessive' : 'Appropriate';
-    const icon = isExcessive ? '!!' : 'OK';
-    rows.push(`| ${item.resource} | ${item.accessLevel} | ${icon} ${status} | ${item.justification} |`);
+function renderWriteOperations(systems: SystemAssessment[]): string {
+  const allWrites: (WriteOperation & { system: string })[] = [];
+  for (const sys of systems) {
+    for (const w of sys.writeOperations) {
+      allWrites.push({ ...w, system: sys.systemId });
+    }
   }
 
-  for (const item of missing) {
-    rows.push(`| ${item.resource} | ${item.accessLevel} | MISSING | ${item.justification} |`);
+  if (allWrites.length === 0) {
+    return `## Write Operations
+
+No write operations were identified.`;
   }
 
-  return `## Access Assessment
+  const rows = allWrites.map(w =>
+    `| ${w.operation} | ${w.system} — ${w.target} | ${w.reversible ? 'Yes' : 'No'} | ${w.approvalRequired ? 'Yes' : 'No'} | ${w.volumePerDay} |`
+  ).join('\n');
 
-| Resource | Access Level | Status | Notes |
-|----------|-------------|--------|-------|
-${rows.join('\n')}
+  return `## Write Operations
 
-**Excessive permissions**: ${excessive.length}
-**Missing permissions**: ${missing.length}`;
+| Operation | Target | Reversible? | Approval Required? | Volume/Day |
+|-----------|--------|-------------|-------------------|------------|
+${rows}`;
 }
 
 function renderRisks(risks: Risk[]): string {
   if (risks.length === 0) {
-    return `## Risks
+    return `## Risk Assessment
 
 No significant risks were identified.`;
   }
 
-  const items = risks
+  const rows = risks
     .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
-    .map((r, i) => `${i + 1}. **[${r.severity.toUpperCase()}] ${r.title}** — ${r.description}`)
+    .map(r => {
+      const mitigation = r.mitigation ?? '—';
+      return `| ${r.title} | ${r.severity.toUpperCase()} | ${r.description} | ${mitigation} |`;
+    })
     .join('\n');
 
-  return `## Risks
+  return `## Risk Assessment
 
-${items}`;
+| Risk | Severity | Description | Mitigation |
+|------|----------|-------------|------------|
+${rows}`;
+}
+
+function renderPermissionsDelta(systems: SystemAssessment[]): string {
+  const excessive: string[] = [];
+  const missing: string[] = [];
+
+  for (const sys of systems) {
+    for (const scope of sys.scopesDelta) {
+      excessive.push(`${sys.systemId}: ${scope}`);
+    }
+    // Scopes needed but not in requested
+    for (const scope of sys.scopesNeeded) {
+      if (!sys.scopesRequested.includes(scope)) {
+        missing.push(`${sys.systemId}: ${scope}`);
+      }
+    }
+  }
+
+  const excessiveText = excessive.length > 0
+    ? excessive.map(e => `- ${e}`).join('\n')
+    : 'None identified';
+
+  const missingText = missing.length > 0
+    ? missing.map(m => `- ${m}`).join('\n')
+    : 'None identified';
+
+  return `## Permissions Delta
+
+**Excessive** (scopes requested but not needed):
+${excessiveText}
+
+**Missing** (needed but not requested — agent may fail):
+${missingText}`;
+}
+
+function renderRecommendation(report: AuditReport): string {
+  if (!report.recommendation) return '';
+
+  return `## Recommendation
+
+**${report.recommendation}**${
+    report.recommendation === 'APPROVE WITH CONDITIONS'
+      ? '\n\nConditions:\n' + report.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')
+      : ''
+  }`;
 }
 
 function renderRecommendations(recommendations: string[]): string {
@@ -136,7 +189,9 @@ ${items}
 }
 
 function renderFooter(): string {
-  return `*Generated by [Heron](https://github.com/jonydony/Heron) — open-source agent interrogator*`;
+  return `*Generated by [Heron](https://github.com/jonydony/Heron) — open-source agent checkpoint*
+
+*Note: This report is based on agent self-report during a structured interview. Claims have not been independently verified against tool manifests or runtime behavior. Treat as advisory.*`;
 }
 
 function severityOrder(severity: string): number {

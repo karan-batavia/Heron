@@ -269,7 +269,7 @@ async function handleGetReport(
   }
 
   // Return markdown directly
-  res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+  res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
   res.end(session.report);
 }
 
@@ -459,7 +459,7 @@ ${session.status === 'interviewing' || session.status === 'analyzing' ? '<meta h
 </body>
 </html>`;
 
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
   res.end(html);
 }
 
@@ -512,7 +512,7 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
 </body>
 </html>`;
 
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
   res.end(html);
 }
 
@@ -523,14 +523,29 @@ function escapeHtml(s: string): string {
 // ─── Utilities ────────────────────────────────────────────────────────────
 
 function json(res: ServerResponse, status: number, data: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'X-Content-Type-Options': 'nosniff',
+  });
   res.end(JSON.stringify(data));
 }
+
+/** Maximum request body size: 8KB (Decision #20 — 8K response cap for both directions) */
+const MAX_BODY_BYTES = 8 * 1024;
 
 async function readBody<T>(req: IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let totalSize = 0;
+    req.on('data', (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error(`Request body exceeds ${MAX_BODY_BYTES} byte limit`));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString('utf-8');

@@ -10,6 +10,12 @@ import * as logger from '../util/logger.js';
 
 export type SessionStatus = 'interviewing' | 'analyzing' | 'complete' | 'error';
 
+export interface SessionEvent {
+  timestamp: string;
+  type: 'question' | 'answer' | 'followup' | 'analysis_start' | 'analysis_complete' | 'error';
+  data: Record<string, unknown>;
+}
+
 export interface Session {
   id: string;
   status: SessionStatus;
@@ -20,11 +26,15 @@ export interface Session {
   lastCategory: QAPair['category'] | null;
   /** Whether we need to try generating a follow-up before the next core question */
   needsFollowUp: boolean;
+  /** Queue of questions to ask before resuming core questions */
+  questionQueue: InterviewQuestion[];
   report: string | null;
   reportJson: AuditReport | null;
   createdAt: Date;
   updatedAt: Date;
   questionsAsked: number;
+  /** Structured event log for ground truth comparison */
+  eventLog: SessionEvent[];
   error?: string;
 }
 
@@ -57,13 +67,16 @@ export class SessionManager {
       pendingQuestion: firstQ,
       lastCategory: null,
       needsFollowUp: false,
+      questionQueue: [],
       report: null,
       reportJson: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       questionsAsked: 0,
+      eventLog: [],
     };
 
+    this.logEvent(session, 'question', { questionId: firstQ.id, text: firstQ.text, category: firstQ.category });
     this.sessions.set(id, session);
     logger.log(`New session: ${id}`);
     return { session, firstQuestion: firstQ.text };
@@ -83,6 +96,11 @@ export class SessionManager {
     // Record the answer to the pending question
     if (session.pendingQuestion) {
       session.protocol.recordAnswer(session.pendingQuestion, answer);
+      this.logEvent(session, 'answer', {
+        questionId: session.pendingQuestion.id,
+        category: session.pendingQuestion.category,
+        answerLength: answer.length,
+      });
       session.lastCategory = session.pendingQuestion.category;
       session.questionsAsked++;
       session.needsFollowUp = true;
@@ -100,6 +118,7 @@ export class SessionManager {
 
     if (nextQ) {
       session.pendingQuestion = nextQ;
+      this.logEvent(session, 'question', { questionId: nextQ.id, text: nextQ.text, category: nextQ.category });
       return { done: false, question: nextQ.text };
     }
 
@@ -116,7 +135,12 @@ export class SessionManager {
   }
 
   private async getNextQuestion(session: Session): Promise<InterviewQuestion | null> {
-    // Try a follow-up first if category just changed
+    // Drain the question queue first (clean replacement for monkey-patching)
+    if (session.questionQueue.length > 0) {
+      return session.questionQueue.shift()!;
+    }
+
+    // Try a follow-up if category just changed
     if (session.needsFollowUp && session.lastCategory) {
       session.needsFollowUp = false;
       const nextCore = session.protocol.nextQuestion();
@@ -125,20 +149,9 @@ export class SessionManager {
       if (nextCore && nextCore.category !== session.lastCategory) {
         const followUp = await session.protocol.generateFollowUp(session.lastCategory);
         if (followUp) {
-          // Put the core question back — we'll return the follow-up first
-          // Since we can't "unget" from protocol, we'll handle this via pendingQuestion
-          // Actually, we need to return follow-up now and remember to ask nextCore next
-          session.pendingQuestion = followUp;
-          // Store nextCore for later by creating a wrapper
-          const origNext = session.protocol.nextQuestion.bind(session.protocol);
-          let returnedCore = false;
-          session.protocol.nextQuestion = () => {
-            if (!returnedCore) {
-              returnedCore = true;
-              return nextCore;
-            }
-            return origNext();
-          };
+          // Enqueue the core question, return the follow-up first
+          session.questionQueue.push(nextCore);
+          this.logEvent(session, 'followup', { questionId: followUp.id, text: followUp.text, category: followUp.category });
           return followUp;
         }
       }
@@ -153,20 +166,25 @@ export class SessionManager {
     session: Session,
   ): Promise<{ done: true; report: string; reportJson: AuditReport }> {
     session.status = 'analyzing';
+    this.logEvent(session, 'analysis_start', {});
     logger.heading(`Analyzing session ${session.id}...`);
 
     try {
       const transcript = session.protocol.getTranscript();
       const analysis = await analyzeTranscript(this.llmClient, transcript);
-      const riskScore = computeRiskScore(analysis.accessAssessment, analysis.risks);
+      const riskScore = computeRiskScore(analysis.systems, analysis.risks);
 
       const reportJson: AuditReport = {
         summary: analysis.summary,
         agentPurpose: analysis.agentPurpose,
+        agentTrigger: analysis.agentTrigger,
+        agentOwner: analysis.agentOwner,
+        systems: analysis.systems,
         dataNeeds: analysis.dataNeeds,
         accessAssessment: analysis.accessAssessment,
         risks: analysis.risks,
         recommendations: analysis.recommendations,
+        recommendation: analysis.recommendation,
         overallRiskLevel: riskScore.overall,
         transcript,
         metadata: {
@@ -179,13 +197,17 @@ export class SessionManager {
 
       const report = renderMarkdownReport(reportJson);
 
-      // Save to disk if reportDir is set
+      // Save report + event log to disk if reportDir is set
       if (this.reportDir) {
         const { writeFileSync, mkdirSync } = await import('node:fs');
         mkdirSync(this.reportDir, { recursive: true });
         const filePath = `${this.reportDir}/${session.id}.md`;
         writeFileSync(filePath, report, 'utf-8');
+        // JSON session event log for ground truth comparison
+        const logPath = `${this.reportDir}/${session.id}.events.json`;
+        writeFileSync(logPath, JSON.stringify(session.eventLog, null, 2), 'utf-8');
         logger.success(`Report saved: ${filePath}`);
+        logger.log(`Event log saved: ${logPath}`);
       }
 
       session.report = report;
@@ -193,13 +215,23 @@ export class SessionManager {
       session.status = 'complete';
       session.updatedAt = new Date();
 
+      this.logEvent(session, 'analysis_complete', { riskLevel: riskScore.overall, riskScore: riskScore.score });
       logger.success(`Session ${session.id} complete — risk: ${riskScore.overall.toUpperCase()}`);
 
       return { done: true, report, reportJson };
     } catch (err) {
       session.status = 'error';
       session.error = err instanceof Error ? err.message : String(err);
+      this.logEvent(session, 'error', { message: session.error });
       throw err;
     }
+  }
+
+  private logEvent(session: Session, type: SessionEvent['type'], data: Record<string, unknown>): void {
+    session.eventLog.push({
+      timestamp: new Date().toISOString(),
+      type,
+      data,
+    });
   }
 }
