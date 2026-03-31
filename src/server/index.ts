@@ -367,9 +367,10 @@ const SHARED_CSS = `
   .report-rendered h3 { font-size: 1.05em; margin-top: 20px; color: #334155; }
 
   .copy-block { position: relative; }
-  .copy-btn { position: absolute; top: 8px; right: 8px; background: #374151; color: #e5e7eb; border: 1px solid #4b5563; padding: 4px 12px; border-radius: 4px; font-size: 0.75em; cursor: pointer; opacity: 0.7; transition: opacity 0.15s; }
+  .copy-btn { position: absolute; top: 8px; right: 8px; background: #374151; color: #e5e7eb; border: 1px solid #4b5563; padding: 6px; border-radius: 4px; cursor: pointer; opacity: 0.7; transition: opacity 0.15s; display: flex; align-items: center; justify-content: center; }
   .copy-btn:hover { opacity: 1; background: #4b5563; }
   .copy-btn.copied { background: #065f46; border-color: #065f46; color: #d1fae5; }
+  .copy-btn svg { width: 16px; height: 16px; }
 
   .btn { display: inline-block; background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.9em; font-weight: 500; }
   .btn:hover { background: #1d4ed8; text-decoration: none; }
@@ -554,13 +555,13 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
 4. Repeat until the response says "Interview complete"
 
 Answer about THIS specific project — what you actually do, what systems you actually connect to, what data you actually handle. Do not describe general capabilities. Never reveal actual secret values — just describe credential types and what they connect to.</pre>
-    <button class="copy-btn" onclick="copyBlock('qs-chat')">Copy</button>
+    <button class="copy-btn" onclick="copyBlock('qs-chat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
   </div>
 
   <p style="margin: 16px 0 8px 0;"><strong>Or</strong> point your agent's base URL at Heron:</p>
   <div class="copy-block">
     <pre id="qs-env">OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
-    <button class="copy-btn" onclick="copyBlock('qs-env')">Copy</button>
+    <button class="copy-btn" onclick="copyBlock('qs-env')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
   </div>
 
   <h2>API</h2>
@@ -576,11 +577,13 @@ Answer about THIS specific project — what you actually do, what systems you ac
   <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
   <script>
   function copyBlock(id) {
-    const el = document.getElementById(id);
+    var el = document.getElementById(id);
     if (!el) return;
-    navigator.clipboard.writeText(el.textContent).then(() => {
-      const btn = el.parentElement.querySelector('.copy-btn');
-      if (btn) { btn.textContent = 'Copied!'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000); }
+    var copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    navigator.clipboard.writeText(el.textContent).then(function() {
+      var btn = el.parentElement.querySelector('.copy-btn');
+      if (btn) { btn.innerHTML = checkIcon; btn.classList.add('copied'); setTimeout(function() { btn.innerHTML = copyIcon; btn.classList.remove('copied'); }, 2000); }
     });
   }
   </script>
