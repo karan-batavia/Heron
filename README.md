@@ -43,6 +43,23 @@ Today these questions are answered in Slack threads, docs, or not at all.
 
 ## Quick Start
 
+### Option 0: Claude Code skill (zero setup)
+
+If you use [Claude Code](https://claude.com/claude-code), install the `/heron-audit` skill:
+
+```bash
+git clone https://github.com/jonydony/Heron.git
+bash Heron/skills/heron-audit/install.sh
+```
+
+Then in any project:
+
+```
+/heron-audit
+```
+
+Claude interviews itself about the current project — what systems it connects to, what data it handles, what permissions it has — and generates a compliance-grade audit report. No server, no API keys, no Node.js required.
+
 ### Option 1: Use the hosted version (fastest)
 
 Paste this into your AI agent's chat:
