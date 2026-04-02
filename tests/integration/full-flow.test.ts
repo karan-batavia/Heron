@@ -152,7 +152,7 @@ describe('Full flow integration', () => {
     expect(markdown).toContain('HubSpot CRM');
     expect(markdown).toContain('Stripe');
     expect(markdown).toContain('Update invoice status');
-    expect(markdown).toContain('## Risks');
+    expect(markdown).toContain('## Findings');
     expect(markdown).toContain('CRITICAL');
     expect(markdown).toContain('Excessive');
     expect(markdown).toContain('## Verdict & Recommendations');

@@ -80,7 +80,7 @@ describe('report templates', () => {
     expect(md).toContain('## Executive Summary');
     expect(md).toContain('## Agent Profile');
     expect(md).toContain('## Systems & Access');
-    expect(md).toContain('## Risks');
+    expect(md).toContain('## Findings');
     expect(md).toContain('## Verdict & Recommendations');
     expect(md).toContain('## Interview Transcript');
   });
@@ -141,7 +141,7 @@ describe('report templates', () => {
   it('includes self-report disclaimer in footer', () => {
     const md = renderMarkdownReport(sampleReport);
     expect(md).toContain('self-report');
-    expect(md).toContain('advisory');
+    expect(md).toContain('compliance certification');
   });
 
   it('includes Heron attribution in footer', () => {

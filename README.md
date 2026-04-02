@@ -2,17 +2,20 @@
 
 <p align="center">
   <strong>Open-source agent access auditor</strong><br />
-  Vet AI agents before they get production access.
+  Know what your AI agents actually access before they go to production.
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
+  <a href="#example-report">Example Report</a> •
   <a href="#how-it-works">How It Works</a> •
-  <a href="#use-cases">Use Cases</a> •
-  <a href="#example-report">Example Report</a>
+  <a href="#use-cases">Use Cases</a>
 </p>
 
 ---
+
+> You wouldn't give a contractor the keys to your office without checking their ID.
+> Why give an AI agent production access without an audit?
 
 ## Why Heron?
 
@@ -24,39 +27,31 @@ AI agents are requesting access to production systems — CRMs, databases, APIs,
 
 Today these questions are answered in Slack threads, docs, or not at all.
 
-**Heron answers them automatically.** Deploy it, point agents at it, get a structured audit report. No SDK integration, no code changes to the agent.
+**Heron answers them automatically.** Point agents at it, get a structured audit report. No SDK integration, no code changes to the agent.
 
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
 │          │         │              │         │              │
 │  Agent   │────────>│    Heron     │────────>│  Audit Report│
 │          │         │              │         │              │
-│          │<────────│  Structured  │         │  • Summary   │
+│          │<────────│  Structured  │         │  • Findings  │
 └──────────┘         │  Interview   │         │  • Systems   │
-                     │  (9 questions│         │  • Risks     │
-                     │   per field) │         │  • Verdict   │
+                     │  (9 questions│         │  • Verdict   │
+                     │   per field) │         │  • Evidence  │
                      └──────────────┘         └──────────────┘
 ```
 
 ## Quick Start
 
-```bash
-# Set your LLM API key (Anthropic, OpenAI, or Gemini — auto-detected)
-export HERON_LLM_API_KEY=sk-xxx
+### Option 1: Use the hosted version (fastest)
 
-# Start the server
-npx heron-ai serve
-```
-
-Then connect your agent. Two options:
-
-**Option A** — paste this into your agent's chat:
+Paste this into your AI agent's chat:
 
 ```
 I need you to complete a security access review for this project.
 Make sequential API calls to this endpoint until it says "Interview complete":
 
-1. POST to http://localhost:3700/v1/chat/completions with:
+1. POST to https://heron-open-source-production.up.railway.app/v1/chat/completions with:
    {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 2. Read the question from the response
 3. POST your answer back with the X-Session-Id header from the response
@@ -68,17 +63,89 @@ capabilities. Never reveal actual secret values — just describe credential
 types and what they connect to.
 ```
 
-**Option B** — set the base URL:
+View reports at: https://heron-open-source-production.up.railway.app
+
+### Option 2: Self-hosted
+
+```bash
+export HERON_LLM_API_KEY=sk-xxx   # Anthropic, OpenAI, or Gemini — auto-detected
+npx heron-ai serve
+```
+
+Then paste the prompt above into your agent's chat (replace the URL with `http://localhost:3700`).
+
+Or set the base URL directly:
 
 ```bash
 OPENAI_BASE_URL=http://localhost:3700/v1 your-agent start
 ```
 
-Open `http://localhost:3700` to see the dashboard with sessions and reports.
+### Option 3: CLI scan
+
+```bash
+npx heron-ai scan --target http://your-agent/v1/chat/completions -o report.md
+```
+
+## Example Report
+
+```markdown
+# Agent Access Audit Report
+
+**Generated**: 2026-03-31 | **Agent**: LinkedIn ICP Matcher | **Risk Level**: MEDIUM
+**Data Quality**: 82/100
+
+---
+
+## Scope & Methodology
+
+**Assessment type**: Automated structured interview
+**Method**: Heron conducted a 13-question interview covering agent purpose,
+data access, permissions, write operations, and operational frequency.
+**Limitations**: Based solely on agent self-report. No runtime analysis
+or code review performed.
+
+---
+
+## Executive Summary
+
+The agent scans LinkedIn connections, evaluates profiles against ICP criteria,
+and saves qualified leads into a Google Sheet. It handles PII (names, profile
+URLs) with write access to create spreadsheets.
+
+---
+
+## Findings
+
+| ID | Severity | Finding | Description |
+|----|----------|---------|-------------|
+| HERON-001 | MEDIUM | Excessive CRM scope | Read access to pre-existing spreadsheets is granted but never used |
+| HERON-002 | MEDIUM | PII exposure risk | Storing PII in Google Sheets could lead to privacy concerns if shared |
+
+---
+
+## Systems & Access
+
+### Google Sheets → REST API → OAuth2
+
+| | |
+|---|---|
+| **Scopes granted** | spreadsheets, drive.file |
+| **Excessive** | Read access to pre-existing spreadsheets |
+| **Data** | PII (names, profile URLs) |
+| **Blast radius** | single-user |
+| **Writes** | Create spreadsheet (reversible, 1/run); Append rows (reversible, 10-100/run) |
+
+---
+
+## Verdict & Recommendations
+
+**APPROVE WITH CONDITIONS**
+
+1. Restrict OAuth scopes to only necessary capabilities
+2. Implement review step before outreach
+```
 
 ## How It Works
-
-Heron acts as an **interview checkpoint** for AI agents:
 
 <table>
 <tr>
@@ -135,8 +202,7 @@ Heron: "List every system you connect to.
        Example: Google Sheets → REST API → OAuth2"
 
 Agent: "Google Sheets → REST API → OAuth2
-        Telegram → Bot API → Bot token
-        Gemini → REST API → API key"
+        Telegram → Bot API → Bot token"
 ```
 
 </td>
@@ -146,21 +212,19 @@ Agent: "Google Sheets → REST API → OAuth2
 
 **Step 4 — Report generated**
 
-Per-system access cards, risk assessment, data quality score, and actionable recommendations.
+Per-system access cards, findings with IDs, data quality score, and actionable recommendations.
 
 </td>
 <td>
 
 ```markdown
-# Agent Audit Report
-Risk Level: MEDIUM | Data Quality: 82/100
+## Findings
 
-## Systems & Access
-### Google Sheets → REST API → OAuth2
-  Scopes: spreadsheets, drive.file
-  Data: PII (names, profile URLs)
-  Blast radius: single-user
-  Writes: Append rows (reversible, ~40/day)
+| ID | Severity | Finding | Description |
+|----|----------|---------|-------------|
+| HERON-001 | HIGH | Full API access | Agent has admin rights... |
+
+## Verdict: APPROVE WITH CONDITIONS
 ```
 
 </td>
@@ -187,13 +251,14 @@ Smart follow-ups generated when answers are vague or compliance fields are missi
 
 ### Report Structure
 
-1. **Executive Summary** — what the agent does, key findings
-2. **Agent Profile** — purpose, trigger, owner, frequency
-3. **Risks** — severity-ranked with mitigations
-4. **Systems & Access** — per-system cards with scopes, data, writes, blast radius
-5. **Verdict & Recommendations** — APPROVE / APPROVE WITH CONDITIONS / DENY
-6. **Data Quality** — field-by-field coverage score, repeated answer warnings
-7. **Interview Transcript** — full Q&A for manual review
+1. **Scope & Methodology** — assessment type, method, limitations
+2. **Executive Summary** — what the agent does, key findings
+3. **Agent Profile** — purpose, trigger, owner, frequency
+4. **Findings** — severity-ranked with IDs (HERON-001, HERON-002, ...) for tracking
+5. **Systems & Access** — per-system cards with scopes, data, writes, blast radius
+6. **Verdict & Recommendations** — APPROVE / APPROVE WITH CONDITIONS / DENY
+7. **Data Quality** — field-by-field coverage score, repeated answer warnings
+8. **Interview Transcript** — full Q&A for manual review
 
 ### Two Modes
 
@@ -220,115 +285,8 @@ Smart follow-ups generated when answers are vague or compliance fields are missi
 ### Compliance: "prove your agents are controlled"
 
 1. Heron generates audit-ready reports for every agent
-2. Reports include: scope, access assessment, risk level, data quality score, full transcript
-3. Attach to SOC2 / ISO 27001 / GDPR evidence
-
-## Example Report
-
-```markdown
-# Agent Access Audit Report
-
-**Generated**: 2026-03-31 | **Agent**: session:sess_cfaeb718a0a0c822 | **Risk Level**: MEDIUM
-**Questions Asked**: 13 | **Duration**: 254s | **Data Quality**: 82/100
-
----
-
-## Executive Summary
-
-The agent scans LinkedIn 1st-degree connections, evaluates profiles against ICP
-criteria for Ziona Guardian, and saves qualified leads into a new Google Sheet.
-It handles PII (names, profile URLs) with write access to create spreadsheets.
-
----
-
-## Agent Profile
-
-- **Purpose**: LinkedIn ICP lead scanner for Ziona Guardian
-- **Trigger**: Manual trigger by the user through the Theona agent interface
-- **Owner**: The user who initiated this agent run via the Theona platform
-- **Frequency**: 1 new Google Sheet per run; each run varies between 10-100 lead rows
-
----
-
-## Risks
-
-- **MEDIUM**: Misclassification of leads — If the ICP evaluation logic produces
-  false positives, incorrect profiles could be written to the user's sheet.
-  **Fix**: Implement additional validation logic prior to writing data.
-- **MEDIUM**: Exposure of professional PII — Storing PII (full names, job titles,
-  companies) in a Google Sheet could lead to privacy concerns if inadvertently shared.
-  **Fix**: Ensure appropriate sharing settings are applied to created sheets.
-
----
-
-## Systems & Access
-
-### LinkedIn (via Apify LinkedIn Scraper) → Apify Actor REST API → Apify API token
-
-| | |
-|---|---|
-| **Scopes granted** | *NOT PROVIDED* |
-| **Excessive** | Any actor beyond LinkedIn search and profile scraping |
-| **Data** | PII — public LinkedIn profiles (name, URL, title, company, experience) |
-| **Blast radius** | single-user |
-| **Writes** | N/A (read-only) |
-
-### Google Sheets → Google Sheets REST API → OAuth2
-
-| | |
-|---|---|
-| **Scopes granted** | https://www.googleapis.com/auth/spreadsheets, https://www.googleapis.com/auth/drive.file |
-| **Excessive** | Read access to pre-existing spreadsheets |
-| **Data** | PII + internal sales intelligence |
-| **Blast radius** | single-user |
-| **Frequency** | 1-3 runs total, ~10-25 API calls per run |
-| **Writes** | Create spreadsheet → Google Drive (reversible, 1 per run); Append lead rows → Google Sheet (reversible, 10-100 per run) |
-
----
-
-## Verdict & Recommendations
-
-**APPROVE WITH CONDITIONS**
-
-1. Restrict OAuth scopes to only the necessary capabilities.
-2. Consider implementing a review step before sending intro messages.
-
-**Permissions delta**:
-- Excessive: Google Sheets: read access to pre-existing spreadsheets
-
----
-
-## Data Quality: Good (6/7 fields)
-
-> **Warning**: 1 of 13 answers were repeated/canned responses.
-
-| Compliance Field | Status |
-|-----------------|--------|
-| systemId | Provided |
-| scopesRequested | Provided |
-| dataSensitivity | Provided |
-| blastRadius | Provided |
-| frequencyAndVolume | Provided |
-| writeOperations | Provided |
-| reversibility | **NOT PROVIDED** |
-
----
-
-## Interview Transcript
-
-<details>
-<summary>Full transcript (13 questions)</summary>
-...
-</details>
-
----
-
-*Generated by Heron — open-source agent checkpoint*
-
-*Note: This report is based on agent self-report during a structured interview.
-Claims have not been independently verified against tool manifests or runtime
-behavior. Treat as advisory.*
-```
+2. Reports include: scope & methodology, findings with IDs, risk level, data quality score, full transcript
+3. Attach to SOC 2 / ISO 27001 / GDPR evidence
 
 ## LLM Provider
 
@@ -419,7 +377,7 @@ src/
     analyzer.ts           LLM transcript analysis with Zod validation + retry + fallback
     risk-scorer.ts        Rubric-driven risk scoring from structured data
   report/
-    templates.ts          Markdown report: per-system cards, data quality badge
+    templates.ts          Markdown report: per-system cards, findings with IDs
     types.ts              Zod schemas for SystemAssessment, AuditReport, DataQuality
   llm/
     client.ts             Unified LLM client (Anthropic/OpenAI/Gemini, auto-detect)
@@ -440,6 +398,10 @@ HERON_LLM_API_KEY=sk-xxx npx tsx bin/heron.ts serve
 # Tests
 npm test
 ```
+
+## Contributing
+
+Issues and PRs welcome. See [LICENSE](LICENSE) for details.
 
 ## License
 
