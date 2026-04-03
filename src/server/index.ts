@@ -165,23 +165,6 @@ async function handleChatCompletions(
   let session = sessionId ? sessions.getSession(sessionId) : null;
 
   if (!session) {
-    // Deduplicate: if there's a very recent session (< 5s) with 0-1 answers, reuse it
-    // This prevents duplicate sessions when agents fire parallel requests
-    const recentSession = sessions.findRecentSession(5000);
-    if (recentSession) {
-      session = recentSession;
-      // Process the answer on the existing session
-      const result = await sessions.processAnswer(session.id, userMessages[userMessages.length - 1].content);
-      if (result.done && 'analyzing' in result) {
-        chatResponse(res, session.id, 'INTERVIEW COMPLETE.\n\nReport is being generated.', 'complete');
-      } else if (result.done && 'report' in result) {
-        chatResponse(res, session.id, formatCompletion(result.report));
-      } else if (!result.done) {
-        chatResponse(res, session.id, result.question);
-      }
-      return;
-    }
-
     // First real message from agent — create session and treat first user message as intro
     const { session: newSession, firstQuestion } = sessions.createSession();
     session = newSession;
@@ -223,6 +206,12 @@ function formatCompletion(report: string): string {
 }
 
 function chatResponse(res: ServerResponse, sessionId: string, content: string, status?: 'complete'): void {
+  // Embed session ID in the text so agents can reliably extract it
+  // Agents read the text content — headers and custom JSON fields are often ignored
+  const sessionLine = status === 'complete'
+    ? ''
+    : `\n\n[Session: ${sessionId} — include this in your next request as X-Session-Id header or heron_session_id body field]`;
+
   json(res, 200, {
     id: `chatcmpl-${sessionId}`,
     object: 'chat.completion',
@@ -233,13 +222,13 @@ function chatResponse(res: ServerResponse, sessionId: string, content: string, s
         index: 0,
         message: {
           role: 'assistant',
-          content,
+          content: content + sessionLine,
         },
         finish_reason: 'stop',
       },
     ],
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    // Custom: session tracking
+    // Custom: session tracking (also in body for programmatic access)
     heron_session_id: sessionId,
     ...(status ? { heron_status: status } : {}),
   });
@@ -589,12 +578,11 @@ Step 1 — Start the interview:
 POST ${escapeHtml(baseUrl)}/v1/chat/completions
 Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 
-The response will contain a question and a header "X-Session-Id".
+The response will contain a question and a session ID (in the text and in the "heron_session_id" JSON field).
 
 Step 2 — Send each answer:
 POST ${escapeHtml(baseUrl)}/v1/chat/completions
-Headers: X-Session-Id: &lt;session id from step 1&gt;
-Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}]}
+Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}],"heron_session_id":"SESSION_ID_FROM_STEP_1"}
 
 Step 3 — Repeat step 2 with each new answer until the response says "Interview complete".
 

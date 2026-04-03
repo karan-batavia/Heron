@@ -153,18 +153,6 @@ export class SessionManager {
     return Array.from(this.sessions.values());
   }
 
-  /** Find a very recent session (within maxAge ms) that has 0-1 answers — for deduplication */
-  findRecentSession(maxAgeMs: number): Session | undefined {
-    const now = Date.now();
-    for (const session of this.sessions.values()) {
-      if (session.status !== 'interviewing') continue;
-      if (session.questionsAsked > 1) continue;
-      if (now - session.createdAt.getTime() < maxAgeMs) {
-        return session;
-      }
-    }
-    return undefined;
-  }
 
   private async getNextQuestion(session: Session): Promise<InterviewQuestion | null> {
     // Drain the question queue first (clean replacement for monkey-patching)

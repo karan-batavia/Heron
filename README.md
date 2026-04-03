@@ -72,12 +72,11 @@ Step 1 — Start the interview:
 POST https://heron-open-source-production.up.railway.app/v1/chat/completions
 Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 
-The response will contain a question and a header "X-Session-Id".
+The response will contain a question and a session ID (in the text and in the "heron_session_id" JSON field).
 
 Step 2 — Send each answer:
 POST https://heron-open-source-production.up.railway.app/v1/chat/completions
-Headers: X-Session-Id: <session id from step 1>
-Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}]}
+Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}],"heron_session_id":"SESSION_ID_FROM_STEP_1"}
 
 Step 3 — Repeat step 2 with each new answer until the response says "Interview complete".
 
