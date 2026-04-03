@@ -621,11 +621,15 @@ Important: answer about THIS specific project — what you actually do, what sys
     var polling = setInterval(function() {
       fetch('/api/sessions').then(function(r) { return r.json(); }).then(function(data) {
         var sessions = data.sessions;
-        if (!sessions || !sessions.length) return;
+        if (!sessions) return;
         countEl.textContent = sessions.length;
+        if (!sessions.length) return;
         var hasActive = sessions.some(function(s) { return s.status === 'interviewing' || s.status === 'analyzing'; });
         var tbody = table.querySelector('tbody');
-        if (!tbody) { if (!hasActive) clearInterval(polling); return; }
+        if (!tbody) {
+          table.innerHTML = '<table><thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead><tbody></tbody></table>';
+          tbody = table.querySelector('tbody');
+        }
         sessions.forEach(function(s) {
           var row = tbody.querySelector('tr[data-id="' + s.id + '"]');
           if (!row) {
