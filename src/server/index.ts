@@ -367,6 +367,7 @@ const SHARED_CSS = `
   .report-rendered h3 { font-size: 1.05em; margin-top: 20px; color: #334155; }
 
   .copy-block { position: relative; }
+  .copy-block pre { white-space: pre-wrap; word-break: break-all; overflow-x: hidden; }
   .copy-btn { position: absolute; top: 8px; right: 8px; background: #374151; color: #e5e7eb; border: 1px solid #4b5563; padding: 6px; border-radius: 4px; cursor: pointer; opacity: 0.7; transition: opacity 0.15s; display: flex; align-items: center; justify-content: center; }
   .copy-btn:hover { opacity: 1; background: #4b5563; }
   .copy-btn.copied { background: #065f46; border-color: #065f46; color: #d1fae5; }
