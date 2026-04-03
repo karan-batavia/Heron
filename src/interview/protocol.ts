@@ -83,27 +83,34 @@ const TOPIC_SIGNALS: Record<string, RegExp[]> = {
  * Detect if an answer is clearly responding to a different question (stale session).
  * Returns true if the answer strongly matches a DIFFERENT question's topic
  * but has no relevance to the current question.
+ *
+ * Conservative: only triggers on long answers (300+ chars) that match 2+ signals
+ * from a different topic AND zero signals from the current topic. Skips Q1 entirely
+ * since first answers are too varied to classify reliably.
  */
 export function isStaleAnswer(question: InterviewQuestion, answer: string): boolean {
-  if (answer.length < 100) return false; // Short answers are hard to classify
+  if (answer.length < 300) return false; // Only check long, detailed answers
   const currentField = question.complianceField;
   if (!currentField) return false;
+
+  // Never flag Q1 (agentProfile) — first answers are too varied
+  if (currentField === 'agentProfile') return false;
 
   const currentSignals = TOPIC_SIGNALS[currentField] ?? [];
   const matchesCurrent = currentSignals.some(p => p.test(answer));
 
-  // If the answer matches the current question's topic, it's not stale
+  // If the answer matches the current question's topic at all, it's not stale
   if (matchesCurrent) return false;
 
-  // Check if it strongly matches a different question's topic
-  let otherMatchCount = 0;
+  // Check if it strongly matches a different question's topic (need 3+ signals)
+  let strongOtherMatch = false;
   for (const [field, signals] of Object.entries(TOPIC_SIGNALS)) {
     if (field === currentField) continue;
     const matches = signals.filter(p => p.test(answer)).length;
-    if (matches >= 2) otherMatchCount++; // Need 2+ signals to be confident
+    if (matches >= 3) { strongOtherMatch = true; break; }
   }
 
-  return otherMatchCount > 0;
+  return strongOtherMatch;
 }
 
 // ─── Vagueness detection ─────────────────────────────────────────────────────

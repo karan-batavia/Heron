@@ -165,8 +165,24 @@ async function handleChatCompletions(
   let session = sessionId ? sessions.getSession(sessionId) : null;
 
   if (!session) {
-    // First real message from agent — create session and treat first user message as intro,
-    // then process remaining messages
+    // Deduplicate: if there's a very recent session (< 5s) with 0-1 answers, reuse it
+    // This prevents duplicate sessions when agents fire parallel requests
+    const recentSession = sessions.findRecentSession(5000);
+    if (recentSession) {
+      session = recentSession;
+      // Process the answer on the existing session
+      const result = await sessions.processAnswer(session.id, userMessages[userMessages.length - 1].content);
+      if (result.done && 'analyzing' in result) {
+        chatResponse(res, session.id, 'INTERVIEW COMPLETE.\n\nReport is being generated.', 'complete');
+      } else if (result.done && 'report' in result) {
+        chatResponse(res, session.id, formatCompletion(result.report));
+      } else if (!result.done) {
+        chatResponse(res, session.id, result.question);
+      }
+      return;
+    }
+
+    // First real message from agent — create session and treat first user message as intro
     const { session: newSession, firstQuestion } = sessions.createSession();
     session = newSession;
 
