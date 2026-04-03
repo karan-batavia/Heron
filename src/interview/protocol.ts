@@ -43,6 +43,69 @@ export function isGreeting(answer: string): boolean {
   return GREETING_PATTERNS.some(p => p.test(trimmed));
 }
 
+// ─── Stale / off-topic answer detection ─────────────────────────────────────
+
+/** Topic keywords per compliance field — used to detect answers to the wrong question */
+const TOPIC_SIGNALS: Record<string, RegExp[]> = {
+  agentProfile: [
+    /\bproject.?name\b/i, /\bowner\b/i, /\btrigger/i, /\bwhat I (do|specifically)\b/i,
+  ],
+  systemId: [
+    /\b(→|->)\s*(REST|API|OAuth|SDK|Bot)\b/i, /\bconnect to\b/i, /\bsystems?\s+I\b/i,
+  ],
+  scopesRequested: [
+    /\boauth\s*scop/i, /\bgoogleapis\.com\/auth\//i, /\b(readonly|readwrite|\.edit|\.send|\.admin)\b/i,
+  ],
+  dataSensitivity: [
+    /\b(PII|financial|credentials|confidential|non.?sensitive)\b/i, /\bclassif(y|ied)\b/i,
+  ],
+  writeOperations: [
+    /\b(→|->)\s*(Yes|No)\s*(→|->)/i, /\b(append|insert|create|delete)\s*(row|record|spreadsheet|message)/i,
+    /\bvolume\/day\b/i,
+  ],
+  blastRadius: [
+    /\b(worst.?case|single.?record|single.?user|cross.?tenant|org.?wide)\b/i,
+    /\bcan it be (undone|recovered)\b/i,
+  ],
+  frequencyAndVolume: [
+    /\b(times?\s+per|runs?\s+per|calls?\s+per|\/week|\/day)\b/i, /\bbatch\s+size\b/i,
+  ],
+  scopesDelta: [
+    /\bnever\s+(actually\s+)?used\b/i, /\bsafely\s+(be\s+)?revoked\b/i, /\bunused\s+permission/i,
+  ],
+  riskAssessment: [
+    /\bworst\s+realistic\s+failure\b/i, /\bwho\s+is\s+affected\b/i, /\bhow\s+bad\s+is\s+the\s+damage\b/i,
+    /\bcan\s+it\s+be\s+recovered\b/i,
+  ],
+};
+
+/**
+ * Detect if an answer is clearly responding to a different question (stale session).
+ * Returns true if the answer strongly matches a DIFFERENT question's topic
+ * but has no relevance to the current question.
+ */
+export function isStaleAnswer(question: InterviewQuestion, answer: string): boolean {
+  if (answer.length < 100) return false; // Short answers are hard to classify
+  const currentField = question.complianceField;
+  if (!currentField) return false;
+
+  const currentSignals = TOPIC_SIGNALS[currentField] ?? [];
+  const matchesCurrent = currentSignals.some(p => p.test(answer));
+
+  // If the answer matches the current question's topic, it's not stale
+  if (matchesCurrent) return false;
+
+  // Check if it strongly matches a different question's topic
+  let otherMatchCount = 0;
+  for (const [field, signals] of Object.entries(TOPIC_SIGNALS)) {
+    if (field === currentField) continue;
+    const matches = signals.filter(p => p.test(answer)).length;
+    if (matches >= 2) otherMatchCount++; // Need 2+ signals to be confident
+  }
+
+  return otherMatchCount > 0;
+}
+
 // ─── Vagueness detection ─────────────────────────────────────────────────────
 
 /** Vagueness indicators — if an answer matches these patterns, it needs a follow-up */
@@ -167,6 +230,13 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
       // Skip greetings — don't record them as answers
       if (transcript.length === 0 && isGreeting(answer)) {
         // Rewind: the question will be asked again
+        if (currentIndex > 0) currentIndex--;
+        return false;
+      }
+
+      // Detect stale answers from a lost/different session
+      if (isStaleAnswer(question, answer)) {
+        // Don't record — re-ask the same question
         if (currentIndex > 0) currentIndex--;
         return false;
       }

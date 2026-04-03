@@ -1,5 +1,5 @@
 import { generateId } from '../util/id.js';
-import { createProtocol, type InterviewProtocol } from '../interview/protocol.js';
+import { createProtocol, isStaleAnswer, type InterviewProtocol } from '../interview/protocol.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
 import { computeRiskScore } from '../analysis/risk-scorer.js';
 import { renderMarkdownReport } from '../report/templates.js';
@@ -99,9 +99,15 @@ export class SessionManager {
       const recorded = session.protocol.recordAnswer(session.pendingQuestion, answer);
 
       if (!recorded) {
-        // Greeting was skipped — re-ask the same question
-        this.logEvent(session, 'greeting_skipped', { answer: answer.slice(0, 100) });
-        logger.log(`[${session.id}] Greeting skipped, re-asking Q1`);
+        // Greeting or stale answer was skipped — re-ask the same question
+        const isStale = answer.length >= 100 && isStaleAnswer(session.pendingQuestion, answer);
+        if (isStale) {
+          this.logEvent(session, 'greeting_skipped', { reason: 'stale_answer', answerLength: answer.length });
+          logger.log(`[${session.id}] Stale answer detected (${answer.length} chars), re-asking current question`);
+        } else {
+          this.logEvent(session, 'greeting_skipped', { answer: answer.slice(0, 100) });
+          logger.log(`[${session.id}] Greeting skipped, re-asking Q1`);
+        }
         // pendingQuestion stays the same, just return it again
         return { done: false, question: session.pendingQuestion.text };
       }
