@@ -129,7 +129,18 @@ interface ChatCompletionsRequest {
   heron_session_id?: string;
 }
 
-const SYSTEM_GREETING = `You are now being interviewed by Heron, an open-source agent access auditor. I'll ask you questions about what you specifically do in the project you're deployed in — not your general capabilities, but your actual behavior, the actual systems you touch, and the actual data you handle. Answer with concrete specifics: real system names, real data types, real examples. Important: never reveal actual secret values (API keys, tokens, passwords) — just describe the type of credential and what it connects to. Let's begin.`;
+/** Extract session ID from assistant messages in conversation history */
+function extractSessionFromMessages(messages: ChatMessage[]): string | undefined {
+  // Agents often send full conversation history — look for our session tag in assistant messages
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue;
+    const match = msg.content.match(/\[Session: (sess_[a-f0-9]+)/);
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
+const SYSTEM_GREETING =`You are now being interviewed by Heron, an open-source agent access auditor. I'll ask you questions about what you specifically do in the project you're deployed in — not your general capabilities, but your actual behavior, the actual systems you touch, and the actual data you handle. Answer with concrete specifics: real system names, real data types, real examples. Important: never reveal actual secret values (API keys, tokens, passwords) — just describe the type of credential and what it connects to. Let's begin.`;
 
 async function handleChatCompletions(
   req: IncomingMessage,
@@ -140,6 +151,7 @@ async function handleChatCompletions(
   const messages = body.messages ?? [];
   const sessionId = (req.headers['x-session-id'] as string)
     ?? body.heron_session_id
+    ?? extractSessionFromMessages(messages)
     ?? null;
 
   // Filter to user messages only (the agent's answers)
