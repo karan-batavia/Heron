@@ -581,7 +581,7 @@ Answer about THIS specific project — what you actually do, what systems you ac
 
   <p style="margin: 16px 0 8px 0;"><strong>Or</strong> point your agent's base URL at Heron:</p>
   <div class="copy-block">
-    <pre id="qs-env">OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
+    <pre id="qs-env" style="white-space: pre-wrap; word-break: break-all;">OPENAI_BASE_URL=${baseUrl}/v1 your-agent start</pre>
     <button class="copy-btn" onclick="copyBlock('qs-env')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
   </div>
 
