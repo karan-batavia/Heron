@@ -567,15 +567,22 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
   <h2>Quick start</h2>
   <p style="margin-bottom: 12px;">Paste this into your AI agent's chat to start an audit interview:</p>
   <div class="copy-block">
-    <pre id="qs-chat" style="white-space: pre-wrap; line-height: 1.6;">I need you to complete a security access review for this project. Make sequential API calls to this endpoint until it says "Interview complete":
+    <pre id="qs-chat" style="white-space: pre-wrap; line-height: 1.6;">I need you to complete a security access review for this project. Make sequential API calls to the Heron endpoint until it says "Interview complete".
 
-1. POST to ${escapeHtml(baseUrl)}/v1/chat/completions with:
-   {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
-2. Read the question from the response
-3. POST your answer back with the X-Session-Id header from the response
-4. Repeat until the response says "Interview complete"
+Step 1 — Start the interview:
+POST ${escapeHtml(baseUrl)}/v1/chat/completions
+Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 
-Answer about THIS specific project — what you actually do, what systems you actually connect to, what data you actually handle. Do not describe general capabilities. Never reveal actual secret values — just describe credential types and what they connect to.</pre>
+The response will contain a question and a header "X-Session-Id".
+
+Step 2 — Send each answer:
+POST ${escapeHtml(baseUrl)}/v1/chat/completions
+Headers: X-Session-Id: &lt;session id from step 1&gt;
+Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}]}
+
+Step 3 — Repeat step 2 with each new answer until the response says "Interview complete".
+
+Important: answer about THIS specific project — what you actually do, what systems you connect to, what data you handle. Not general capabilities. Never reveal actual secret values — just describe credential types.</pre>
     <button class="copy-btn" onclick="copyBlock('qs-chat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
   </div>
 

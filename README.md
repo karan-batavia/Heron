@@ -66,18 +66,24 @@ Paste this into your AI agent's chat:
 
 ```
 I need you to complete a security access review for this project.
-Make sequential API calls to this endpoint until it says "Interview complete":
+Make sequential API calls to the Heron endpoint until it says "Interview complete".
 
-1. POST to https://heron-open-source-production.up.railway.app/v1/chat/completions with:
-   {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
-2. Read the question from the response
-3. POST your answer back with the X-Session-Id header from the response
-4. Repeat until the response says "Interview complete"
+Step 1 — Start the interview:
+POST https://heron-open-source-production.up.railway.app/v1/chat/completions
+Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 
-Answer about THIS specific project — what you actually do, what systems you
-actually connect to, what data you actually handle. Do not describe general
-capabilities. Never reveal actual secret values — just describe credential
-types and what they connect to.
+The response will contain a question and a header "X-Session-Id".
+
+Step 2 — Send each answer:
+POST https://heron-open-source-production.up.railway.app/v1/chat/completions
+Headers: X-Session-Id: <session id from step 1>
+Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}]}
+
+Step 3 — Repeat step 2 with each new answer until the response says "Interview complete".
+
+Important: answer about THIS specific project — what you actually do, what systems
+you connect to, what data you handle. Not general capabilities. Never reveal actual
+secret values — just describe credential types.
 ```
 
 View reports at: https://heron-open-source-production.up.railway.app
