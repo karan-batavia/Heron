@@ -236,15 +236,13 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
     recordAnswer(question: InterviewQuestion, answer: string): boolean {
       // Skip greetings — don't record them as answers
       if (transcript.length === 0 && isGreeting(answer)) {
-        // Rewind: the question will be asked again
-        if (currentIndex > 0) currentIndex--;
+        // Don't rewind currentIndex — SessionManager will re-ask pendingQuestion directly
         return false;
       }
 
       // Detect stale answers from a lost/different session
       if (isStaleAnswer(question, answer)) {
-        // Don't record — re-ask the same question
-        if (currentIndex > 0) currentIndex--;
+        // Don't rewind — SessionManager will re-ask pendingQuestion directly
         return false;
       }
 
