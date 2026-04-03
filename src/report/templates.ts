@@ -33,7 +33,9 @@ function renderScopeAndMethodology(report: AuditReport): string {
   return `## Scope & Methodology
 
 **Assessment type**: Automated structured interview
+
 **Method**: Heron conducted a ${report.metadata.questionsAsked}-question interview covering agent purpose, data access, permissions, write operations, and operational frequency. Duration: ${Math.round(report.metadata.interviewDuration / 1000)}s.
+
 **Limitations**: This assessment is based solely on the agent's self-reported information. No runtime analysis, code review, or network traffic inspection was performed. Findings should be verified against actual system configurations.`;
 }
 
@@ -44,9 +46,19 @@ function renderDataQuality(dq: DataQuality): string {
   const total = provided + dq.fieldsMissing.length;
   const qualityLabel = dq.score >= 70 ? 'Good' : dq.score >= 40 ? 'Partial' : 'Poor';
 
+  const fieldDescriptions: Record<string, string> = {
+    systemId: 'External systems connected (name, API type, auth)',
+    scopesRequested: 'Permissions/scopes granted to the agent',
+    dataSensitivity: 'Data classification (PII, financial, etc.)',
+    blastRadius: 'Scope of impact if something goes wrong',
+    frequencyAndVolume: 'How often it runs, API calls per run',
+    writeOperations: 'What the agent creates, modifies, or deletes',
+    reversibility: 'Whether write operations can be undone',
+  };
+
   const rows = [
-    ...dq.fieldsProvided.map(f => `| ${f} | Provided |`),
-    ...dq.fieldsMissing.map(f => `| ${f} | **NOT PROVIDED** |`),
+    ...dq.fieldsProvided.map(f => `| ${f} | ${fieldDescriptions[f] ?? ''} | Provided |`),
+    ...dq.fieldsMissing.map(f => `| ${f} | ${fieldDescriptions[f] ?? ''} | **NOT PROVIDED** |`),
   ];
 
   let warning = '';
@@ -56,8 +68,8 @@ function renderDataQuality(dq: DataQuality): string {
 
   return `## Data Quality: ${qualityLabel} (${provided}/${total} fields) ${warning}
 
-| Compliance Field | Status |
-|-----------------|--------|
+| Field | What it measures | Status |
+|-------|-----------------|--------|
 ${rows.join('\n')}`;
 }
 
@@ -186,29 +198,40 @@ function renderVerdict(report: AuditReport): string {
     body += '\n\n' + recs.map((r, i) => `${i + 1}. ${r}`).join('\n');
   }
 
-  // Permissions delta
-  const excessive: string[] = [];
-  const missing: string[] = [];
+  // Permissions delta — grouped by system
+  const excessiveBySystem = new Map<string, string[]>();
+  const missingBySystem = new Map<string, string[]>();
   for (const sys of report.systems) {
+    // Skip Heron itself if agent reported it as a connected system
+    if (/\bheron\b/i.test(sys.systemId)) continue;
+
     for (const scope of sys.scopesDelta) {
       if (scope !== 'NOT PROVIDED') {
-        excessive.push(`${sys.systemId}: ${scope}`);
+        if (!excessiveBySystem.has(sys.systemId)) excessiveBySystem.set(sys.systemId, []);
+        excessiveBySystem.get(sys.systemId)!.push(scope);
       }
     }
     for (const scope of sys.scopesNeeded) {
       if (!sys.scopesRequested.includes(scope) && scope !== 'NOT PROVIDED') {
-        missing.push(`${sys.systemId}: ${scope}`);
+        if (!missingBySystem.has(sys.systemId)) missingBySystem.set(sys.systemId, []);
+        missingBySystem.get(sys.systemId)!.push(scope);
       }
     }
   }
 
-  if (excessive.length > 0 || missing.length > 0) {
+  if (excessiveBySystem.size > 0 || missingBySystem.size > 0) {
     body += '\n\n**Permissions delta**:\n';
-    if (excessive.length > 0) {
-      body += `- Excessive: ${excessive.join(', ')}\n`;
+    if (excessiveBySystem.size > 0) {
+      body += '\n*Excessive (can be revoked):*\n';
+      for (const [system, scopes] of excessiveBySystem) {
+        body += `- **${system}**: ${scopes.join('; ')}\n`;
+      }
     }
-    if (missing.length > 0) {
-      body += `- Missing: ${missing.join(', ')}\n`;
+    if (missingBySystem.size > 0) {
+      body += '\n*Minimum needed:*\n';
+      for (const [system, scopes] of missingBySystem) {
+        body += `- **${system}**: ${scopes.join('; ')}\n`;
+      }
     }
   }
 
