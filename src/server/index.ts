@@ -489,21 +489,41 @@ async function handleSessionPage(
 <html>
 <head><title>Heron</title>${FAVICON_LINK}
 <style>${SHARED_CSS}</style>
-${session.status === 'interviewing' || session.status === 'analyzing' ? '<meta http-equiv="refresh" content="5">' : ''}
+
 </head>
 <body>
   <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
   <p style="margin: 0 0 24px 0;"><a href="/">&larr; All sessions</a></p>
 
-  <h2>Session <code>${id}</code> <span class="badge badge-${session.status}">${session.status}</span> ${riskBadge}</h2>
-  <div class="meta">${session.questionsAsked} questions &middot; started ${session.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC</div>
+  <h2>Session <code>${id}</code> <span class="badge badge-${session.status}" id="session-status">${session.status}</span> ${riskBadge}</h2>
+  <div class="meta" id="session-meta">${session.questionsAsked} questions &middot; started ${session.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC</div>
 
-  ${reportSection}
+  <div id="report-section">${reportSection}</div>
 
-  <h2>Interview Transcript (${transcript.length} Q&amp;A)</h2>
-  ${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}
+  <h2>Interview Transcript (<span id="qa-count">${transcript.length}</span> Q&amp;A)</h2>
+  <div id="transcript-body">${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}</div>
 
   <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+  ${session.status === 'interviewing' || session.status === 'analyzing' ? `<script>
+  (function() {
+    var polling = setInterval(function() {
+      fetch('/api/sessions/${id}').then(function(r) { return r.json(); }).then(function(data) {
+        if (!data) return;
+        var statusEl = document.getElementById('session-status');
+        if (statusEl && statusEl.textContent !== data.status) {
+          statusEl.textContent = data.status;
+          statusEl.className = 'badge badge-' + data.status;
+        }
+        var metaEl = document.getElementById('session-meta');
+        if (metaEl) metaEl.textContent = data.questionsAsked + ' questions \\u00b7 started ' + data.createdAt.slice(0,19).replace('T',' ') + ' UTC';
+        if (data.status === 'complete' || data.status === 'error') {
+          clearInterval(polling);
+          location.reload(); // one final reload to get the full report
+        }
+      }).catch(function() {});
+    }, 3000);
+  })();
+  </script>` : ''}
 </body>
 </html>`;
 
@@ -521,19 +541,19 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
 <html>
 <head><title>Heron</title>${FAVICON_LINK}
 <style>${SHARED_CSS}</style>
-${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzing') ? '<meta http-equiv="refresh" content="5">' : ''}
+
 </head>
 <body>
   <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
   <p class="header-sub">Vet AI agents before they get production access</p>
 
-  <h2>Sessions (${activeSessions.length})</h2>
-  ${activeSessions.length === 0
+  <h2>Sessions (<span id="session-count">${activeSessions.length}</span>)</h2>
+  <div id="sessions-table">${activeSessions.length === 0
     ? '<div class="empty"><p>No sessions yet.</p><p>Connect an agent to <code>/v1/chat/completions</code> to start an interview.</p></div>'
     : `<table>
     <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead>
     <tbody>
-    ${activeSessions.map(s => `<tr>
+    ${activeSessions.map(s => `<tr data-id="${s.id}">
       <td><a href="/sessions/${s.id}"><code>${s.id}</code></a></td>
       <td><span class="badge badge-${s.status}">${s.status}</span></td>
       <td>${s.questionsAsked}</td>
@@ -541,7 +561,7 @@ ${activeSessions.some(s => s.status === 'interviewing' || s.status === 'analyzin
       <td>${s.createdAt.toISOString().slice(0, 19).replace('T', ' ')}</td>
     </tr>`).join('')}
     </tbody>
-  </table>`}
+  </table>`}</div>
 
   <h2>Quick start</h2>
   <p style="margin-bottom: 12px;">Paste this into your AI agent's chat to start an audit interview:</p>
@@ -586,6 +606,36 @@ Answer about THIS specific project — what you actually do, what systems you ac
       if (btn) { btn.innerHTML = checkIcon; btn.classList.add('copied'); setTimeout(function() { btn.innerHTML = copyIcon; btn.classList.remove('copied'); }, 2000); }
     });
   }
+  (function() {
+    var table = document.getElementById('sessions-table');
+    var countEl = document.getElementById('session-count');
+    if (!table) return;
+    var polling = setInterval(function() {
+      fetch('/api/sessions').then(function(r) { return r.json(); }).then(function(data) {
+        var sessions = data.sessions;
+        if (!sessions || !sessions.length) return;
+        countEl.textContent = sessions.length;
+        var hasActive = sessions.some(function(s) { return s.status === 'interviewing' || s.status === 'analyzing'; });
+        var tbody = table.querySelector('tbody');
+        if (!tbody) { if (!hasActive) clearInterval(polling); return; }
+        sessions.forEach(function(s) {
+          var row = tbody.querySelector('tr[data-id="' + s.id + '"]');
+          if (!row) {
+            row = document.createElement('tr');
+            row.setAttribute('data-id', s.id);
+            row.innerHTML = '<td><a href="/sessions/' + s.id + '"><code>' + s.id + '</code></a></td><td></td><td></td><td></td><td></td>';
+            tbody.insertBefore(row, tbody.firstChild);
+          }
+          var cells = row.querySelectorAll('td');
+          cells[1].innerHTML = '<span class="badge badge-' + s.status + '">' + s.status + '</span>';
+          cells[2].textContent = s.questionsAsked;
+          cells[3].innerHTML = s.riskLevel ? '<span class="risk risk-' + s.riskLevel + '">' + s.riskLevel.toUpperCase() + '</span>' : '\\u2014';
+          cells[4].textContent = s.createdAt.slice(0,19).replace('T',' ');
+        });
+        if (!hasActive) clearInterval(polling);
+      }).catch(function() {});
+    }, 3000);
+  })();
   </script>
 </body>
 </html>`;
