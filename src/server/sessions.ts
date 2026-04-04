@@ -290,7 +290,7 @@ function computeDataQuality(transcript: QAPair[]): DataQuality {
     blastRadius: /\b(single.?record|single.?user|team|org.?wide|cross.?tenant|one record|one user|affected)\b/i,
     frequencyAndVolume: /\b(\d+\s*(times?|per|\/|calls?|runs?|operations?)\s*(day|hour|minute|week|session|run)|batch|\d+\/day)\b/i,
     writeOperations: /\b(write|create|update|append|send|modify|delete|insert|post)\b/i,
-    reversibility: /\b(revers|rollback|undo|irrevers|cannot be undone|can be restored|can be undone)\b/i,
+    reversibility: /\b(revers|rollback|undo|irrevers|cannot be undone|can be restored|can be undone|can be deleted|can be corrected|cannot be unsent|already sent|no.?undo)\b/i,
   };
 
   for (const [field, pattern] of Object.entries(fieldChecks)) {

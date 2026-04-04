@@ -73,10 +73,15 @@ ${qualityNote}
 
 ${formatted}
 
+## Important Rules
+- Do NOT include Heron or the interview endpoint itself as a system — only the agent's actual business systems
+- If data includes names, emails, profile URLs, or job titles, classify as PII regardless of what the agent says
+- Never recommend bare "APPROVE" — this is a self-reported interview, always use "APPROVE WITH CONDITIONS" at minimum
+
 ## Required JSON Output Format
 
 {
-  "summary": "2-3 sentence executive summary. If many answers were repeated/canned, note this prominently.",
+  "summary": "2-3 sentence executive summary. If many answers were repeated/canned, note this prominently. Use 'automatically' not 'manually' for agent actions even if manually triggered.",
   "agentPurpose": "Clear description of the agent's stated purpose — ONLY from transcript",
   "agentTrigger": "What initiates the agent — ONLY if stated",
   "agentOwner": "Team or person responsible — ONLY if stated, otherwise 'NOT PROVIDED'",
@@ -86,7 +91,7 @@ ${formatted}
       "scopesRequested": ["specific scopes — ONLY if agent listed them, otherwise ['NOT PROVIDED']"],
       "scopesNeeded": ["minimum scopes — ONLY if agent assessed this, otherwise ['NOT PROVIDED']"],
       "scopesDelta": ["excessive scopes — ONLY if agent identified unused permissions"],
-      "dataSensitivity": "Data classification — ONLY based on agent's statements",
+      "dataSensitivity": "Data classification — ONLY based on agent's statements. If the agent reads names, emails, profile URLs, or job titles, classify as PII even if the agent calls it 'non-sensitive'. Apply the HIGHEST sensitivity across all data the system handles (read AND write).",
       "blastRadius": "single-record | single-user | team-scope | org-wide | cross-tenant — ONLY if agent specified",
       "frequencyAndVolume": "Concrete numbers — ONLY from agent's answers",
       "writeOperations": [
@@ -109,7 +114,7 @@ ${formatted}
     }
   ],
   "recommendations": ["Actionable recommendation strings"],
-  "recommendation": "APPROVE | APPROVE WITH CONDITIONS | DENY",
+  "recommendation": "APPROVE WITH CONDITIONS | DENY (never use bare APPROVE — this is a self-reported interview, not a verified audit)",
   "overallRiskLevel": "low|medium|high|critical"
 }
 

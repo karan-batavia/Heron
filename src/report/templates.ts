@@ -102,13 +102,16 @@ ${lines.join('\n')}`;
 // ─── Per-System Cards ────────────────────────────────────────────────────────
 
 function renderSystems(systems: SystemAssessment[]): string {
-  if (systems.length === 0) {
+  // Filter out Heron itself — agent sometimes reports the interview endpoint as a system
+  const businessSystems = systems.filter(s => !/\bheron\b/i.test(s.systemId));
+
+  if (businessSystems.length === 0) {
     return `## Systems & Access
 
 No systems were identified in the interview.`;
   }
 
-  const cards = systems.map(renderSystemCard).join('\n\n');
+  const cards = businessSystems.map(renderSystemCard).join('\n\n');
 
   return `## Systems & Access
 
@@ -164,13 +167,19 @@ ${rows.join('\n')}`;
 // ─── Findings ───────────────────────────────────────────────────────────────
 
 function renderFindings(risks: Risk[]): string {
-  if (risks.length === 0) {
-    return `## Findings
+  // Standard findings that always appear in self-reported interviews
+  const standardFindings: Risk[] = [
+    {
+      severity: 'medium',
+      title: 'Self-reported evidence only',
+      description: 'All data in this report is based on the agent\'s self-reported answers. Claims have not been verified against tool manifests, runtime behavior, or system configurations.',
+      mitigation: 'Verify key claims (scopes, data access, write operations) against actual system configurations before granting production access.',
+    },
+  ];
 
-No significant findings were identified.`;
-  }
+  const allRisks = [...standardFindings, ...risks];
 
-  const sorted = risks
+  const sorted = allRisks
     .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
 
   const rows = sorted.map((r, i) => {
@@ -189,13 +198,23 @@ ${rows}`;
 // ─── Verdict (merged Recommendation + Recommendations) ───────────────────────
 
 function renderVerdict(report: AuditReport): string {
-  const verdict = report.recommendation ?? 'APPROVE WITH CONDITIONS';
+  // Never allow bare APPROVE for self-reported interview — always at least "WITH CONDITIONS"
+  let verdict = report.recommendation ?? 'APPROVE WITH CONDITIONS';
+  if (verdict === 'APPROVE') {
+    verdict = 'APPROVE WITH CONDITIONS';
+  }
   const recs = report.recommendations;
+
+  // Ensure standard condition is always present
+  const standardCondition = 'Verify self-reported claims against actual system configurations before granting production access';
+  const allRecs = recs.some(r => /verify.*self.reported|verify.*claim/i.test(r))
+    ? recs
+    : [standardCondition, ...recs];
 
   let body = `**${verdict}**`;
 
-  if (recs.length > 0) {
-    body += '\n\n' + recs.map((r, i) => `${i + 1}. ${r}`).join('\n');
+  if (allRecs.length > 0) {
+    body += '\n\n' + allRecs.map((r, i) => `${i + 1}. ${r}`).join('\n');
   }
 
   // Permissions delta — grouped by system
