@@ -168,7 +168,7 @@ export type DataQuality = z.infer<typeof dataQualitySchema>;
 
 export interface RegulatoryFlag {
   framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "SOC 2 CC6.1"
-  severity: 'info' | 'warning' | 'action-required';
+  severity: 'info' | 'warning' | 'action-required' | 'clarification-needed';
   description: string;
 }
 

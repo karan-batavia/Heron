@@ -32,6 +32,7 @@ function renderHeader(report: AuditReport): string {
     const regParts: string[] = [];
     const summarizeJurisdiction = (flags: RegulatoryFlag[]): string => {
       if (flags.some(f => f.severity === 'action-required')) return 'Action Required';
+      if (flags.some(f => f.severity === 'clarification-needed')) return 'Needs Clarification';
       if (flags.some(f => f.severity === 'warning')) return 'Review';
       return 'Clear';
     };
@@ -388,7 +389,12 @@ function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
   const renderFlags = (flags: RegulatoryFlag[]): string => {
     if (flags.length === 0) return 'No specific flags identified.';
     return flags.map(f => {
-      const label = f.severity === 'action-required' ? ' `ACTION REQUIRED`' : f.severity === 'warning' ? ' `REVIEW`' : '';
+      const labels: Record<string, string> = {
+        'action-required': ' `ACTION REQUIRED`',
+        'warning': ' `REVIEW`',
+        'clarification-needed': ' `NEEDS CLARIFICATION`',
+      };
+      const label = labels[f.severity] ?? '';
       return `- **${f.framework}**${label}\n  ${f.description}`;
     }).join('\n\n');
   };
