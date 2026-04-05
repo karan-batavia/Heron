@@ -38,7 +38,7 @@ export function loadConfigFromFlags(flags: {
     llm: {
       provider: flags.llmProvider ?? (base as any)?.llm?.provider ?? 'anthropic',
       apiKey: flags.llmKey ?? process.env.HERON_LLM_API_KEY ?? (base as any)?.llm?.apiKey,
-      model: flags.llmModel ?? (base as any)?.llm?.model ?? 'claude-sonnet-4-20250514',
+      model: flags.llmModel ?? (base as any)?.llm?.model,
     },
     output: {
       format: flags.format ?? (base as any)?.output?.format ?? 'markdown',
