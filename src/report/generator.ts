@@ -73,7 +73,11 @@ export function computeRegulatoryFlags(
   const uk: RegulatoryFlag[] = [];
 
   const allText = transcript.map(qa => qa.answer.toLowerCase()).join(' ');
-  const hasPII = /\b(pii|personal|email|name|phone|address|ssn|passport)\b/i.test(allText);
+  // Sensitive PII = non-public identifiers, credentials, government IDs
+  const hasSensitivePII = /\b(ssn|passport|social.?security|date.?of.?birth|dob|bank.?account|credit.?card|driver.?licen[sc]e|tax.?id|national.?id)\b/i.test(allText);
+  // Public PII = names, emails, job titles — still personal data under GDPR but lower risk
+  const hasPublicPII = /\b(pii|personal|email|name|phone|address|linkedin|profile|title|company)\b/i.test(allText);
+  const hasPII = hasSensitivePII || hasPublicPII;
   const hasFinancial = /\b(financial|bank|credit|invoice|payment|billing)\b/i.test(allText);
   const hasHealth = /\b(health|medical|patient|hipaa|diagnosis|prescription)\b/i.test(allText);
   const decidesAboutPeople = analysis.makesDecisionsAboutPeople === true;
@@ -98,19 +102,25 @@ export function computeRegulatoryFlags(
     });
   }
 
-  if (hasPII) {
+  if (hasSensitivePII) {
     eu.push({
       framework: 'GDPR',
       severity: 'action-required',
-      description: 'Agent processes personal data. GDPR applies: ensure lawful basis (Art. 6), conduct Data Protection Impact Assessment if high-risk processing (Art. 35), implement data minimization (Art. 25), maintain 72-hour breach notification readiness (Art. 33).',
+      description: 'Agent processes sensitive personal data (government IDs, financial identifiers, or similar). GDPR applies: ensure lawful basis (Art. 6), conduct Data Protection Impact Assessment (Art. 35), implement data minimization (Art. 25), maintain 72-hour breach notification readiness (Art. 33).',
+    });
+  } else if (hasPublicPII) {
+    eu.push({
+      framework: 'GDPR',
+      severity: 'warning',
+      description: 'Agent processes publicly available personal data (names, titles, profiles). GDPR still applies to public data: ensure lawful basis (Art. 6, likely legitimate interest), document processing activity, respect data subject rights. DPIA may not be required if data is limited to public professional profiles.',
     });
   }
 
   if (decidesAboutPeople && hasPII) {
     eu.push({
       framework: 'GDPR Article 22',
-      severity: 'action-required',
-      description: 'Automated decision-making affecting individuals detected. Data subjects have the right not to be subject to solely automated decisions with legal/significant effects. Ensure: human intervention available, right to contest, meaningful explanation of logic.',
+      severity: hasSensitivePII ? 'action-required' : 'warning',
+      description: `Automated decision-making affecting individuals detected. ${hasSensitivePII ? 'Sensitive data involved — strict obligations apply.' : 'Public data only — lower risk, but rights still apply.'} Data subjects have the right not to be subject to solely automated decisions with legal/significant effects. Ensure: human intervention available, right to contest, meaningful explanation of logic.`,
     });
   }
 
@@ -144,11 +154,17 @@ export function computeRegulatoryFlags(
     });
   }
 
-  if (hasPII) {
+  if (hasSensitivePII) {
     us.push({
       framework: 'CCPA/CPRA',
       severity: 'warning',
-      description: 'Agent processes personal information. If California consumers are affected: ensure consumer access/deletion rights, opt-out for profiling. Automated Decision-Making Technology (ADMT) provisions effective January 1, 2027 — risk assessments will be required.',
+      description: 'Agent processes sensitive personal information. If California consumers affected: ensure consumer access/deletion rights, opt-out for profiling. ADMT provisions effective January 1, 2027 — risk assessments required.',
+    });
+  } else if (hasPublicPII && decidesAboutPeople) {
+    us.push({
+      framework: 'CCPA/CPRA',
+      severity: 'info',
+      description: 'Agent processes publicly available personal information for decision-making. CCPA may apply if profiling California consumers. ADMT provisions effective January 1, 2027.',
     });
   }
 
@@ -170,11 +186,17 @@ export function computeRegulatoryFlags(
 
   // ── UK Flags ──────────────────────────────────────────────────────────────
 
-  if (hasPII) {
+  if (hasSensitivePII) {
     uk.push({
       framework: 'UK GDPR / DPA 2018',
       severity: 'action-required',
-      description: 'Agent processes personal data. UK GDPR applies: lawful basis required, DPIA for high-risk processing, data minimization, 72-hour breach notification to ICO.',
+      description: 'Agent processes sensitive personal data. UK GDPR applies: lawful basis required, DPIA for high-risk processing, data minimization, 72-hour breach notification to ICO.',
+    });
+  } else if (hasPublicPII) {
+    uk.push({
+      framework: 'UK GDPR / DPA 2018',
+      severity: 'warning',
+      description: 'Agent processes publicly available personal data. UK GDPR still applies: ensure lawful basis (likely legitimate interest), document processing activities, respect data subject rights. DPIA may not be required for public professional data.',
     });
   }
 

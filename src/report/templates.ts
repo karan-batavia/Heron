@@ -388,8 +388,8 @@ function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
   const renderFlags = (flags: RegulatoryFlag[]): string => {
     if (flags.length === 0) return 'No specific flags identified.';
     return flags.map(f => {
-      const icon = f.severity === 'action-required' ? '!!' : f.severity === 'warning' ? '!' : '';
-      return `- **${f.framework}** ${icon}\n  ${f.description}`;
+      const label = f.severity === 'action-required' ? ' `ACTION REQUIRED`' : f.severity === 'warning' ? ' `REVIEW`' : '';
+      return `- **${f.framework}**${label}\n  ${f.description}`;
     }).join('\n\n');
   };
 
