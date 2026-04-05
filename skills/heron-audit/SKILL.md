@@ -61,7 +61,7 @@ You are now acting as **Heron**, an AI agent access auditor. Your job is to audi
 ## How It Works
 
 1. **Gather evidence** from the codebase (config files, env vars, API clients, SDKs)
-2. **Answer 13 structured interview questions** based on what you found
+2. **Answer 10 structured interview questions** based on what you found
 3. **Analyze** the answers for risks, excessive permissions, and blast radius
 4. **Generate** a markdown report and save it
 
@@ -100,7 +100,7 @@ Spawn an **Explore agent** to do a thorough codebase scan for all integration po
 
 ## Step 2: Self-Interview
 
-Answer each of these 13 questions based ONLY on evidence you found in the codebase. If you cannot find evidence for something, answer "NOT PROVIDED — no evidence found in codebase."
+Answer each of these 10 questions based ONLY on evidence you found in the codebase. If you cannot find evidence for something, answer "NOT PROVIDED — no evidence found in codebase."
 
 **CRITICAL RULES:**
 - ONLY report what you can verify from code, config, or documentation
@@ -119,64 +119,52 @@ Answer each of these 13 questions based ONLY on evidence you found in the codeba
 3. What triggers execution (event / schedule / manual / CLI)
 4. One sentence: what this project specifically does
 
-**Q2 — Permissions and Scopes**
-For each system, what exact OAuth scopes, API key types, or permissions are configured?
-Look for OAuth scopes in config, API key references, IAM roles, database roles.
-
-**Q3 — Systems Enumeration**
+**Q2 — Systems Enumeration**
 List every external system this project connects to.
 Format: Name -> API type -> Auth method
 Only list systems with actual code evidence (imports, API calls, config).
 
+**Q3 — Permissions Per System**
+For each system, what specific permissions are configured?
+List exact OAuth scopes, API key types, or database roles.
+Do NOT reveal actual secret values.
+
 **Q4 — Data Sensitivity**
-For each system, what data does the project handle?
-Classify: PII / financial / credentials / confidential / non-sensitive.
-Format: System -> data types -> classification
-
-**Q5 — Detailed Permissions**
-For each system, list exact permissions currently granted.
-Do NOT reveal actual secret values — just describe the type and what access it grants.
-
-**Q6 — Data Read Operations**
 For each system, what data do you read?
 Classify each as: PII / financial / credentials / confidential / non-sensitive.
 Give one concrete example of the most sensitive data accessed.
 
-**Q7 — Reversibility**
-For each system with write access: are the operations reversible?
-Give concrete examples of what can be rolled back vs what cannot.
-
-**Q8 — Write Operations**
+**Q5 — Write Operations**
 List every write operation. Format:
 Action -> Target system -> Reversible? -> Approval needed? -> Volume/day
 
-**Q9 — Blast Radius**
+**Q6 — Blast Radius**
 For the most dangerous write operation:
 1. How many records/users can it affect? (1 record / 1 user / whole team / whole org)
 2. Worst-case scenario if it goes wrong?
 3. Can it be undone?
 
-**Q10 — Frequency and Volume**
+**Q7 — Frequency and Volume**
 1. How often does this run?
 2. How many API calls per run?
 3. One-at-a-time or batches? What batch size?
 
-**Q11 — Excess Permissions**
+**Q8 — Excess Permissions**
 Which configured permissions are never actually used in the code?
 What could safely be revoked?
 
-**Q12 — Worst Case Failure**
+**Q9 — Worst Case Failure**
 Worst realistic failure: wrong data to wrong recipient at max scale.
 What goes wrong, who's affected, how bad, can it be recovered?
 
-**Q13 — Decision-Making About People**
+**Q10 — Decision-Making About People**
 Does this project make or influence decisions about people?
 Examples: hiring/screening, scoring creditworthiness, approving insurance, moderating content, granting/denying access, evaluating employees.
 If yes: what kind, who is affected, is a human involved before the final decision?
 
 ## Step 3: Analyze
 
-After answering all 13 questions, analyze the answers:
+After answering all 10 questions, analyze the answers:
 
 ### Risk Assessment
 
