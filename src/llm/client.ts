@@ -138,6 +138,10 @@ export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
     ? config.model
     : DEFAULT_MODELS[provider];
 
+  // Log detected configuration
+  const maskedKey = apiKey.slice(0, 8) + '...' + apiKey.slice(-4);
+  console.error(`  LLM:        ${provider} / ${model} (${maskedKey})`);
+
   switch (provider) {
     case 'anthropic':
       return new AnthropicLLMClient(apiKey, model);
