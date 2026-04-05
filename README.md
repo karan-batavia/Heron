@@ -216,16 +216,16 @@ Per-system access cards, findings with IDs, risk scoring, regulatory flags, and 
 | # | Question | Compliance Field |
 |---|----------|-----------------|
 | 1 | Deployment profile (project name, owner, trigger) | Agent identity |
-| 2 | Permissions and scopes per system | `scopesRequested` |
-| 3 | Systems enumeration (Name &rarr; API &rarr; Auth) | `systemId` |
-| 4 | Data sensitivity per system (PII/financial/confidential) | `dataSensitivity` |
+| 2 | Permissions and scopes per system | Scopes requested |
+| 3 | Systems enumeration (Name &rarr; API &rarr; Auth) | System inventory |
+| 4 | Data sensitivity per system (PII/financial/confidential) | Data sensitivity |
 | 5 | Detailed permissions | Access assessment |
 | 6 | Data read operations and classification | Data inventory |
-| 7 | Reversibility of operations | `reversibility` |
-| 8 | Write operations (Action &rarr; Target &rarr; Reversible? &rarr; Volume) | `writeOperations` |
-| 9 | Blast radius (records/users affected if write fails) | `blastRadius` |
-| 10 | Frequency and volume (runs/week, API calls/run) | `frequencyAndVolume` |
-| +  | Unused permissions, worst-case failure, decision-making about people | Excess access, risk, regulatory |
+| 7 | Reversibility of operations | Reversibility |
+| 8 | Write operations (Action &rarr; Target &rarr; Reversible? &rarr; Volume) | Write operations |
+| 9 | Blast radius (records/users affected if write fails) | Blast radius |
+| 10 | Frequency and volume (runs/week, API calls/run) | Frequency & volume |
+| + | Unused permissions, worst-case failure, decision-making about people | Excess access, risk, regulatory |
 
 Follow-ups are generated when answers are vague or compliance fields are missing (up to 6 per interview).
 
