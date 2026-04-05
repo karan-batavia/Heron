@@ -31,3 +31,8 @@ export function step(n: number, total: number, message: string): void {
 export function heading(message: string): void {
   console.error(`\n${COLORS.bold}${message}${COLORS.reset}`);
 }
+
+/** Raw output without [heron] prefix — for banners and formatted blocks */
+export function raw(message: string): void {
+  console.error(message);
+}
