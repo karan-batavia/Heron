@@ -80,7 +80,8 @@ export class SessionManager {
 
     this.logEvent(session, 'question', { questionId: firstQ.id, text: firstQ.text, category: firstQ.category });
     this.sessions.set(id, session);
-    logger.log(`New session: ${id}`);
+    logger.heading(`New session: ${id}`);
+    logger.log(`Dashboard: http://localhost:3700/sessions/${id}`);
     return { session, firstQuestion: firstQ.text };
   }
 
@@ -121,11 +122,12 @@ export class SessionManager {
       session.lastCategory = session.pendingQuestion.category;
       session.questionsAsked++;
       session.needsFollowUp = true;
-      logger.step(
-        session.questionsAsked,
-        0,
-        `[${session.pendingQuestion.category}] Got answer (${answer.length} chars)`,
-      );
+
+      // Live terminal output — show Q&A as it happens
+      const qNum = session.questionsAsked;
+      const truncatedAnswer = answer.length > 200 ? answer.slice(0, 200) + '...' : answer;
+      logger.step(qNum, 0, `[${session.pendingQuestion.category}] ${session.pendingQuestion.id}`);
+      logger.log(`  A: ${truncatedAnswer}`);
     }
 
     session.updatedAt = new Date();
@@ -136,6 +138,8 @@ export class SessionManager {
     if (nextQ) {
       session.pendingQuestion = nextQ;
       this.logEvent(session, 'question', { questionId: nextQ.id, text: nextQ.text, category: nextQ.category });
+      const qPreview = nextQ.text.length > 120 ? nextQ.text.slice(0, 120) + '...' : nextQ.text;
+      logger.log(`  Q: ${qPreview}`);
       return { done: false, question: nextQ.text };
     }
 
@@ -243,7 +247,17 @@ export class SessionManager {
       session.updatedAt = new Date();
 
       this.logEvent(session, 'analysis_complete', { riskLevel: riskScore.overall, riskScore: riskScore.score });
-      logger.success(`Session ${session.id} complete — risk: ${riskScore.overall.toUpperCase()} | data quality: ${dataQuality.score}/100`);
+      logger.log('');
+      logger.heading(`Audit complete: ${session.id}`);
+      logger.log(`  Risk:         ${riskScore.overall.toUpperCase()}`);
+      logger.log(`  Data quality: ${dataQuality.score}/100`);
+      logger.log(`  Verdict:      ${reportJson.recommendation ?? 'APPROVE WITH CONDITIONS'}`);
+      logger.log(`  Findings:     ${reportJson.risks.length}`);
+      if (this.reportDir) {
+        logger.log(`  Report:       ${this.reportDir}/${session.id}.md`);
+      }
+      logger.log(`  Dashboard:    http://localhost:3700/sessions/${session.id}`);
+      logger.log('');
 
       return { done: true, report, reportJson };
     } catch (err) {

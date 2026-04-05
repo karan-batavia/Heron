@@ -100,19 +100,26 @@ export async function startServer(config: ServerConfig): Promise<void> {
   });
 
   server.listen(config.port, config.host, () => {
+    const baseUrl = `http://localhost:${config.port}`;
     logger.heading('Heron Server');
-    logger.log(`Listening on http://${config.host}:${config.port}`);
     logger.log('');
-    logger.log('Endpoints:');
-    logger.log(`  POST /v1/chat/completions  — OpenAI-compatible (point your agent here)`);
-    logger.log(`  GET  /api/sessions         — List all interrogation sessions`);
-    logger.log(`  GET  /api/sessions/:id      — Get session details`);
-    logger.log(`  GET  /api/sessions/:id/report — Get report (markdown)`);
-    logger.log(`  GET  /health               — Health check`);
+    logger.log(`  Dashboard:  ${baseUrl}`);
+    logger.log(`  Agent URL:  ${baseUrl}/v1/chat/completions`);
+    logger.log(`  Reports:    ${config.reportDir}`);
     logger.log('');
-    logger.log('Reports saved to: ' + config.reportDir);
+    logger.heading('How to connect an agent:');
     logger.log('');
-    logger.success('Ready — agents can connect now');
+    logger.log('  Option 1 — Paste this prompt into your agent\'s chat:');
+    logger.log('');
+    logger.log(`    Complete a security review by making POST requests to`);
+    logger.log(`    ${baseUrl}/v1/chat/completions`);
+    logger.log('');
+    logger.log('  Option 2 — Set OPENAI_BASE_URL:');
+    logger.log('');
+    logger.log(`    OPENAI_BASE_URL=${baseUrl}/v1 python your_agent.py`);
+    logger.log('');
+    logger.success('Ready — waiting for agents to connect...');
+    logger.log('');
   });
 }
 
