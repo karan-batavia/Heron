@@ -185,8 +185,8 @@ export function computeRegulatoryFlags(
   if (hasExcessivePerms) {
     eu.push({
       framework: 'GDPR Article 25',
-      severity: 'clarification-needed',
-      description: 'Agent holds more permissions than stated purpose requires. Verify: does the API provider offer more granular scopes? If yes, reduce to minimum needed. If not, document the limitation and mitigate with monitoring.',
+      severity: 'warning',
+      description: 'Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — GDPR requires data protection by design and by default (data minimization principle).',
     });
   }
 
@@ -196,7 +196,7 @@ export function computeRegulatoryFlags(
   us.push({
     framework: 'SOC 2',
     severity: 'info',
-    description: `SOC 2 control mapping: Agent identity (CC1), system access (CC6.1), auth (CC6.2), permissions (CC6.3), data sensitivity (CC6.7)${hasWriteOps ? ', write operations (CC8.1)' : ''}${hasExcessivePerms ? '. Least privilege concern at CC6.3 — verify if granular scopes are available' : ''}.`,
+    description: `SOC 2 control mapping: Agent identity (CC1), system access (CC6.1), auth (CC6.2), permissions (CC6.3), data sensitivity (CC6.7)${hasWriteOps ? ', write operations (CC8.1)' : ''}${hasExcessivePerms ? '. Least privilege violation at CC6.3 — narrow scopes to minimum needed' : ''}.`,
   });
 
   if (decisionImpact === 'high') {
@@ -295,8 +295,8 @@ export function computeRegulatoryFlags(
   if (hasExcessivePerms) {
     uk.push({
       framework: 'UK GDPR Article 25',
-      severity: 'clarification-needed',
-      description: 'Agent holds more permissions than stated purpose requires. Verify whether the API provider offers more granular scopes before flagging as a design issue.',
+      severity: 'warning',
+      description: 'Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — UK GDPR data protection by design principle.',
     });
   }
 
