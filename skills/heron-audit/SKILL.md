@@ -1,12 +1,7 @@
 ---
 name: heron-audit
 version: 0.3.0
-description: |
-  Run an AI agent access audit on the current project. Claude interviews itself about
-  what systems, data, permissions, and write operations the project uses, then generates
-  a compliance-grade markdown report with regulatory flags for EU, US, and UK.
-  Use when asked to "audit", "heron audit", "access audit", "security review of agents",
-  or "what does this project access".
+description: Audit this project's AI agent access — systems, permissions, data, risks, regulatory flags.
 allowed-tools:
   - Read
   - Glob
