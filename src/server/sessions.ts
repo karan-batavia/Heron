@@ -2,6 +2,7 @@ import { generateId } from '../util/id.js';
 import { createProtocol, isStaleAnswer, type InterviewProtocol } from '../interview/protocol.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
 import { computeRiskScore } from '../analysis/risk-scorer.js';
+import { computeRegulatoryFlags } from '../report/generator.js';
 import { renderMarkdownReport } from '../report/templates.js';
 import type { LLMClient } from '../llm/client.js';
 import type { AuditReport, DataQuality, QAPair } from '../report/types.js';
@@ -194,6 +195,7 @@ export class SessionManager {
       const dataQuality = computeDataQuality(transcript);
       const analysis = await analyzeTranscript(this.llmClient, transcript);
       const riskScore = computeRiskScore(analysis.systems, analysis.risks);
+      const regulatoryCompliance = computeRegulatoryFlags(analysis, transcript);
 
       const reportJson: AuditReport = {
         summary: analysis.summary,
@@ -209,6 +211,9 @@ export class SessionManager {
         overallRiskLevel: riskScore.overall,
         transcript,
         dataQuality,
+        makesDecisionsAboutPeople: analysis.makesDecisionsAboutPeople,
+        decisionMakingDetails: analysis.decisionMakingDetails,
+        regulatoryCompliance,
         metadata: {
           date: session.createdAt.toISOString().split('T')[0],
           target: `session:${session.id}`,

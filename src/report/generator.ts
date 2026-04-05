@@ -64,7 +64,7 @@ export async function generateReport(
 }
 
 /** Derive regulatory flags from analysis results and transcript signals */
-function computeRegulatoryFlags(
+export function computeRegulatoryFlags(
   analysis: { systems: AuditReport['systems']; makesDecisionsAboutPeople?: boolean; decisionMakingDetails?: string },
   transcript: QAPair[],
 ): RegulatoryCompliance {
