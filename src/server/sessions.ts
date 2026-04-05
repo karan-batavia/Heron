@@ -80,8 +80,13 @@ export class SessionManager {
 
     this.logEvent(session, 'question', { questionId: firstQ.id, text: firstQ.text, category: firstQ.category });
     this.sessions.set(id, session);
-    logger.heading(`New session: ${id}`);
-    logger.log(`Dashboard: http://localhost:3700/sessions/${id}`);
+    logger.raw('');
+    logger.raw(`  \x1b[1mNew session: ${id}\x1b[0m`);
+    logger.raw(`  Dashboard: http://localhost:3700/sessions/${id}`);
+    const total = protocol.totalCoreQuestions;
+    logger.raw('');
+    logger.raw(`  \x1b[36mQ1/${total}\x1b[0m \x1b[2m[${firstQ.category}]\x1b[0m`);
+    logger.raw(`  \x1b[36mQ:\x1b[0m ${firstQ.text}`);
     return { session, firstQuestion: firstQ.text };
   }
 
@@ -105,10 +110,10 @@ export class SessionManager {
         const isStale = answer.length >= 100 && isStaleAnswer(session.pendingQuestion, answer);
         if (isStale) {
           this.logEvent(session, 'greeting_skipped', { reason: 'stale_answer', answerLength: answer.length });
-          logger.log(`[${session.id}] Stale answer detected (${answer.length} chars), re-asking current question`);
+          logger.raw(`  \x1b[2mGreeting skipped (stale answer, ${answer.length} chars) — re-asking\x1b[0m`);
         } else {
           this.logEvent(session, 'greeting_skipped', { answer: answer.slice(0, 100) });
-          logger.log(`[${session.id}] Greeting skipped, re-asking Q1`);
+          logger.raw(`  \x1b[2mGreeting skipped — re-asking\x1b[0m`);
         }
         // pendingQuestion stays the same, just return it again
         return { done: false, question: session.pendingQuestion.text };
@@ -123,11 +128,8 @@ export class SessionManager {
       session.questionsAsked++;
       session.needsFollowUp = true;
 
-      // Live terminal output — show Q&A as it happens
-      const qNum = session.questionsAsked;
-      const truncatedAnswer = answer.length > 200 ? answer.slice(0, 200) + '...' : answer;
-      logger.step(qNum, 0, `[${session.pendingQuestion.category}] ${session.pendingQuestion.id}`);
-      logger.log(`  A: ${truncatedAnswer}`);
+      // Live terminal output — show answer (question was already printed when sent)
+      logger.raw(`  \x1b[2mA:\x1b[0m ${answer}`);
     }
 
     session.updatedAt = new Date();
@@ -138,12 +140,18 @@ export class SessionManager {
     if (nextQ) {
       session.pendingQuestion = nextQ;
       this.logEvent(session, 'question', { questionId: nextQ.id, text: nextQ.text, category: nextQ.category });
-      const qPreview = nextQ.text.length > 120 ? nextQ.text.slice(0, 120) + '...' : nextQ.text;
-      logger.log(`  Q: ${qPreview}`);
+      const total = session.protocol.totalCoreQuestions;
+      const isFollowUp = nextQ.id.startsWith('followup_');
+      const qLabel = isFollowUp ? 'Follow-up' : `Q${session.questionsAsked + 1}/${total}`;
+      logger.raw('');
+      logger.raw(`  \x1b[36m${qLabel}\x1b[0m \x1b[2m[${nextQ.category}]\x1b[0m`);
+      logger.raw(`  \x1b[36mQ:\x1b[0m ${nextQ.text}`);
       return { done: false, question: nextQ.text };
     }
 
     // No more questions — start analysis in background, return immediately
+    logger.raw('');
+    logger.raw(`  \x1b[33m⏳ Analyzing transcript...\x1b[0m`);
     this.finishSession(session).catch(err => {
       logger.error(`Background analysis failed for ${session.id}: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -192,7 +200,6 @@ export class SessionManager {
   ): Promise<{ done: true; report: string; reportJson: AuditReport }> {
     session.status = 'analyzing';
     this.logEvent(session, 'analysis_start', {});
-    logger.heading(`Analyzing session ${session.id}...`);
 
     try {
       const transcript = session.protocol.getTranscript();
@@ -238,7 +245,7 @@ export class SessionManager {
         const logPath = `${this.reportDir}/${session.id}.events.json`;
         writeFileSync(logPath, JSON.stringify(session.eventLog, null, 2), 'utf-8');
         logger.success(`Report saved: ${filePath}`);
-        logger.log(`Event log saved: ${logPath}`);
+        logger.raw(`  Event log:  ${logPath}`);
       }
 
       session.report = report;
@@ -247,17 +254,20 @@ export class SessionManager {
       session.updatedAt = new Date();
 
       this.logEvent(session, 'analysis_complete', { riskLevel: riskScore.overall, riskScore: riskScore.score });
-      logger.log('');
-      logger.heading(`Audit complete: ${session.id}`);
-      logger.log(`  Risk:         ${riskScore.overall.toUpperCase()}`);
-      logger.log(`  Data quality: ${dataQuality.score}/100`);
-      logger.log(`  Verdict:      ${reportJson.recommendation ?? 'APPROVE WITH CONDITIONS'}`);
-      logger.log(`  Findings:     ${reportJson.risks.length}`);
+      const riskColor = riskScore.overall === 'high' ? '\x1b[31m'    // red
+        : riskScore.overall === 'medium' ? '\x1b[33m'                // yellow
+        : '\x1b[32m';                                                // green
+      logger.raw('');
+      logger.raw(`  \x1b[1mAudit complete: ${session.id}\x1b[0m`);
+      logger.raw(`  Risk:         ${riskColor}${riskScore.overall.toUpperCase()}\x1b[0m`);
+      logger.raw(`  Data quality: ${dataQuality.score}/100`);
+      logger.raw(`  Verdict:      ${reportJson.recommendation ?? 'APPROVE WITH CONDITIONS'}`);
+      logger.raw(`  Findings:     ${reportJson.risks.length}`);
       if (this.reportDir) {
-        logger.log(`  Report:       ${this.reportDir}/${session.id}.md`);
+        logger.raw(`  Report:       ${this.reportDir}/${session.id}.md`);
       }
-      logger.log(`  Dashboard:    http://localhost:3700/sessions/${session.id}`);
-      logger.log('');
+      logger.raw(`  Dashboard:    http://localhost:3700/sessions/${session.id}`);
+      logger.raw('');
 
       return { done: true, report, reportJson };
     } catch (err) {

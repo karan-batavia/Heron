@@ -19,7 +19,7 @@ export async function analyzeTranscript(
   llmClient: LLMClient,
   transcript: QAPair[],
 ): Promise<FullAnalysisResult> {
-  logger.heading('Analyzing interview transcript...');
+  // Note: caller shows "⏳ Analyzing transcript..." already
 
   const prompt = buildAnalysisPrompt(transcript);
 
@@ -38,7 +38,7 @@ export async function analyzeTranscript(
     return buildFallbackAnalysis(transcript);
   }
 
-  logger.success(`Analysis complete — risk level: ${parsed.overallRiskLevel.toUpperCase()}`);
+  // Note: caller shows the final summary with computed risk level
 
   // Derive legacy flat fields from per-system data
   return enrichWithLegacyFields(parsed);

@@ -15,11 +15,16 @@ export interface GenerateReportOptions {
  * Generates a complete audit report from an interview session.
  * Runs LLM analysis, computes risk score, and formats the output.
  */
+export interface ReportResult {
+  report: string;
+  reportJson: AuditReport;
+}
+
 export async function generateReport(
   session: InterviewSession,
   llmClient: LLMClient,
   options: GenerateReportOptions,
-): Promise<string> {
+): Promise<ReportResult> {
   // 1. Analyze transcript with LLM
   const analysis = await analyzeTranscript(llmClient, session.transcript);
 
@@ -56,11 +61,11 @@ export async function generateReport(
   };
 
   // 5. Format output
-  if (options.format === 'json') {
-    return JSON.stringify(report, null, 2);
-  }
+  const formatted = options.format === 'json'
+    ? JSON.stringify(report, null, 2)
+    : renderMarkdownReport(report);
 
-  return renderMarkdownReport(report);
+  return { report: formatted, reportJson: report };
 }
 
 // ─── Decision Impact Classification ────────────────────────────────────────

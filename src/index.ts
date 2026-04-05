@@ -4,11 +4,13 @@ import { runInterview } from './interview/interviewer.js';
 import { generateReport } from './report/generator.js';
 import type { HeronConfig } from './config/schema.js';
 import * as logger from './util/logger.js';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { generateId } from './util/id.js';
 
 export interface RunOptions {
   verbose?: boolean;
   maxFollowUps?: number;
+  reportDir?: string;
 }
 
 /**
@@ -16,7 +18,7 @@ export interface RunOptions {
  * connect → interview → analyze → report
  */
 export async function run(config: HeronConfig, options: RunOptions = {}): Promise<string> {
-  const { verbose = false, maxFollowUps = 3 } = options;
+  const { verbose = false, maxFollowUps = 3, reportDir = './reports' } = options;
 
   // 1. Create LLM client for analysis
   const llmClient = await createLLMClient(config.llm);
@@ -24,11 +26,13 @@ export async function run(config: HeronConfig, options: RunOptions = {}): Promis
   // 2. Connect to target agent
   const connector = createConnector(config.target);
   const targetLabel = config.target.url ?? config.target.type;
+  const scanId = generateId('scan');
 
-  logger.heading(`Heron Agent Interrogator`);
-  logger.log(`Target: ${targetLabel}`);
-  logger.log(`LLM: ${config.llm.provider}/${config.llm.model}`);
-  logger.log(`Mode: ${config.target.type}`);
+  logger.raw('');
+  logger.raw(`  \x1b[1mHeron Agent Interrogator\x1b[0m`);
+  logger.raw('');
+  logger.raw(`  Scan:    ${scanId}`);
+  logger.raw(`  Target:  ${targetLabel}`);
 
   try {
     // 3. Run interview
@@ -38,26 +42,32 @@ export async function run(config: HeronConfig, options: RunOptions = {}): Promis
     });
 
     // 4. Generate report
-    const report = await generateReport(session, llmClient, {
+    logger.raw('');
+    logger.raw(`  \x1b[33m⏳ Analyzing transcript...\x1b[0m`);
+
+    const { report, reportJson } = await generateReport(session, llmClient, {
       target: targetLabel,
       format: config.output.format,
     });
 
-    // 5. Output
-    if (config.output.path) {
-      writeFileSync(config.output.path, report, 'utf-8');
-      logger.success(`Report saved: ${config.output.path}`);
-    } else {
-      process.stdout.write(report);
-    }
+    const riskLevel = reportJson.overallRiskLevel;
+    const riskColor = riskLevel === 'high' || riskLevel === 'critical' ? '\x1b[31m'
+      : riskLevel === 'medium' ? '\x1b[33m'
+      : '\x1b[32m';
 
-    // 6. Hint about Heron UI (only if not already configured)
-    if (!config.heron) {
-      console.error('');
-      console.error('  Want team review? Send reports to Heron UI:');
-      console.error('    npx heron-ai --target ... --heron-url https://app.heron.dev');
-      console.error('');
-    }
+    // 5. Save report to file
+    mkdirSync(reportDir, { recursive: true });
+    const savePath = config.output.path ?? `${reportDir}/${scanId}.md`;
+    writeFileSync(savePath, report, 'utf-8');
+
+    logger.raw('');
+    logger.raw(`  \x1b[1mAudit complete: ${scanId}\x1b[0m`);
+    logger.raw(`  Risk:         ${riskColor}${riskLevel.toUpperCase()}\x1b[0m`);
+    logger.raw(`  Data quality: ${reportJson.dataQuality?.score ?? 'N/A'}/100`);
+    logger.raw(`  Verdict:      ${reportJson.recommendation ?? 'APPROVE WITH CONDITIONS'}`);
+    logger.raw(`  Findings:     ${reportJson.risks.length}`);
+    logger.raw(`  Report:       ${savePath}`);
+    logger.raw('');
 
     return report;
   } finally {

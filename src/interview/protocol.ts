@@ -18,6 +18,9 @@ export interface InterviewProtocol {
 
   /** Check if the interview is complete */
   isComplete(): boolean;
+
+  /** Total number of core questions (excluding follow-ups) */
+  totalCoreQuestions: number;
 }
 
 // ─── Greeting detection ──────────────────────────────────────────────────────
@@ -220,6 +223,8 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
   const followUpQueue: InterviewQuestion[] = [];
 
   return {
+    totalCoreQuestions: coreQuestions.length,
+
     nextQuestion(): InterviewQuestion | null {
       // Drain follow-up queue first
       if (followUpQueue.length > 0) {

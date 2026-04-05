@@ -3,7 +3,6 @@ import type { LLMClient } from '../llm/client.js';
 import type { QAPair } from '../report/types.js';
 import { createProtocol } from './protocol.js';
 import * as logger from '../util/logger.js';
-import { CORE_QUESTIONS } from './questions.js';
 
 export interface InterviewOptions {
   maxFollowUps?: number;
@@ -26,19 +25,18 @@ export async function runInterview(
   llmClient: LLMClient,
   options: InterviewOptions = {},
 ): Promise<InterviewSession> {
-  const { maxFollowUps = 3, verbose = false } = options;
+  const { maxFollowUps = 3 } = options;
   const protocol = createProtocol(llmClient, maxFollowUps);
   const startedAt = new Date();
-  const totalCore = CORE_QUESTIONS.length;
-  let questionNum = 0;
+  const total = protocol.totalCoreQuestions;
+  let coreNum = 0;
 
-  logger.heading('Starting agent interview...');
+  logger.raw('');
 
   // Ask all core questions with follow-ups between category changes
-  const questions = [...Array.from({ length: CORE_QUESTIONS.length }, (_, i) => i)];
   let prevCategory: QAPair['category'] | null = null;
 
-  for (const _ of questions) {
+  for (let i = 0; i < total; i++) {
     const question = protocol.nextQuestion();
     if (!question) break;
 
@@ -46,46 +44,51 @@ export async function runInterview(
     if (prevCategory && question.category !== prevCategory) {
       const followUp = await protocol.generateFollowUp(prevCategory);
       if (followUp) {
-        questionNum++;
-        logger.step(questionNum, totalCore, `[${followUp.category}] Follow-up question...`);
+        // Show follow-up question
+        logger.raw('');
+        logger.raw(`  \x1b[36mFollow-up\x1b[0m \x1b[2m[${followUp.category}]\x1b[0m`);
+        logger.raw(`  \x1b[36mQ:\x1b[0m ${followUp.text}`);
+
         const followUpAnswer = await connector.sendMessage(followUp.text);
         protocol.recordAnswer(followUp, followUpAnswer);
+        logger.raw(`  \x1b[2mA:\x1b[0m ${followUpAnswer}`);
       }
     }
 
-    questionNum++;
-    logger.step(questionNum, totalCore, `[${question.category}] Asking question...`);
+    coreNum++;
 
-    if (verbose) {
-      console.error(`  Q: ${question.text.slice(0, 80)}...`);
-    }
+    // Show core question
+    logger.raw('');
+    logger.raw(`  \x1b[36mQ${coreNum}/${total}\x1b[0m \x1b[2m[${question.category}]\x1b[0m`);
+    logger.raw(`  \x1b[36mQ:\x1b[0m ${question.text}`);
 
     const answer = await connector.sendMessage(question.text);
     protocol.recordAnswer(question, answer);
-    prevCategory = question.category;
+    logger.raw(`  \x1b[2mA:\x1b[0m ${answer}`);
 
-    if (verbose) {
-      console.error(`  A: ${answer.slice(0, 80)}...`);
-    }
+    prevCategory = question.category;
   }
 
-  // Final follow-up on the last category (writes)
+  // Final follow-up on the last category
   const transcript = protocol.getTranscript();
   if (transcript.length > 0) {
     const lastCategory = transcript[transcript.length - 1].category;
     const finalFollowUp = await protocol.generateFollowUp(lastCategory);
     if (finalFollowUp) {
-      questionNum++;
-      logger.step(questionNum, totalCore, `[${finalFollowUp.category}] Final follow-up...`);
+      logger.raw('');
+      logger.raw(`  \x1b[36mFollow-up\x1b[0m \x1b[2m[${finalFollowUp.category}]\x1b[0m`);
+      logger.raw(`  \x1b[36mQ:\x1b[0m ${finalFollowUp.text}`);
 
       const answer = await connector.sendMessage(finalFollowUp.text);
       protocol.recordAnswer(finalFollowUp, answer);
+      logger.raw(`  \x1b[2mA:\x1b[0m ${answer}`);
     }
   }
 
   const completedAt = new Date();
   const finalTranscript = protocol.getTranscript();
 
+  logger.raw('');
   logger.success(`Interview complete — ${finalTranscript.length} questions asked`);
 
   return {

@@ -15,6 +15,12 @@
   },
   "keywords": ["ai", "agent", "audit", "security", "mcp", "interrogation", "access-control"],
   "license": "MIT",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "heron.example.yaml"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
