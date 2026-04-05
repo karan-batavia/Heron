@@ -1,4 +1,4 @@
-import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation } from './types.js';
+import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, RegulatoryCompliance, RegulatoryFlag } from './types.js';
 
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
@@ -10,6 +10,7 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderSystems(report.systems),
     renderVerdict(report),
     report.dataQuality ? renderDataQuality(report.dataQuality) : null,
+    report.regulatoryCompliance ? renderRegulatoryCompliance(report.regulatoryCompliance) : null,
     renderTranscript(report.transcript),
     renderDisclaimer(),
   ];
@@ -274,6 +275,34 @@ function renderTranscript(transcript: QAPair[]): string {
 ${items}
 
 </details>`;
+}
+
+// ─── Regulatory Compliance ──────────────────────────────────────────────────
+
+function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
+  const renderFlags = (flags: RegulatoryFlag[]): string => {
+    if (flags.length === 0) return 'No specific flags identified.';
+    return flags.map(f => {
+      const icon = f.severity === 'action-required' ? '!!' : f.severity === 'warning' ? '!' : '';
+      return `- **${f.framework}** ${icon}\n  ${f.description}`;
+    }).join('\n\n');
+  };
+
+  return `## Regulatory Compliance
+
+> This section highlights potential regulatory implications based on interview data. It is advisory — consult qualified legal counsel for compliance decisions.
+
+### EU (EU AI Act + GDPR)
+
+${renderFlags(compliance.eu)}
+
+### US (SOC 2 + State AI Laws)
+
+${renderFlags(compliance.us)}
+
+### UK (UK GDPR + ICO Guidance)
+
+${renderFlags(compliance.uk)}`;
 }
 
 // ─── Disclaimer ─────────────────────────────────────────────────────────────

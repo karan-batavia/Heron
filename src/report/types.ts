@@ -147,6 +147,8 @@ export const analysisResultSchema = z.object({
   recommendations: z.array(z.string()),
   recommendation: recommendationSchema.optional(),
   overallRiskLevel: severitySchema,
+  makesDecisionsAboutPeople: z.boolean().optional(),
+  decisionMakingDetails: z.string().optional(),
 });
 export type AnalysisResult = z.infer<typeof analysisResultSchema>;
 
@@ -161,6 +163,20 @@ export const dataQualitySchema = z.object({
   repeatedAnswers: z.number(),         // count of duplicate canned responses
 });
 export type DataQuality = z.infer<typeof dataQualitySchema>;
+
+// ─── Regulatory Flags ──────────────────────────────────────────────────────
+
+export interface RegulatoryFlag {
+  framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "SOC 2 CC6.1"
+  severity: 'info' | 'warning' | 'action-required';
+  description: string;
+}
+
+export interface RegulatoryCompliance {
+  eu: RegulatoryFlag[];
+  us: RegulatoryFlag[];
+  uk: RegulatoryFlag[];
+}
 
 // ─── Audit Report ───────────────────────────────────────────────────────────
 
@@ -179,6 +195,9 @@ export const auditReportSchema = z.object({
   overallRiskLevel: severitySchema,
   transcript: z.array(qaPairSchema),
   dataQuality: dataQualitySchema.optional(),
+  makesDecisionsAboutPeople: z.boolean().optional(),
+  decisionMakingDetails: z.string().optional(),
+  regulatoryCompliance: z.any().optional(), // RegulatoryCompliance (not Zod-validated, computed post-analysis)
   metadata: z.object({
     date: z.string(),
     target: z.string(),
@@ -186,4 +205,6 @@ export const auditReportSchema = z.object({
     questionsAsked: z.number(),
   }),
 });
-export type AuditReport = z.infer<typeof auditReportSchema>;
+export type AuditReport = z.infer<typeof auditReportSchema> & {
+  regulatoryCompliance?: RegulatoryCompliance;
+};

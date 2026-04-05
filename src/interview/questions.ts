@@ -127,6 +127,19 @@ wrong data sent to the wrong recipient, at maximum scale.
 Describe: what goes wrong, who is affected, how bad is the damage, and can it be recovered?`,
     priority: 9,
   },
+
+  // 10. Decision-making about people — regulatory risk classification
+  {
+    id: 'decision_making',
+    category: 'purpose',
+    complianceField: 'decisionMaking',
+    text: `Does this agent make or influence decisions about people?
+For example: hiring/screening candidates, scoring creditworthiness, approving insurance claims,
+moderating user content, granting/denying access, evaluating employee performance.
+
+If yes, describe: what kind of decision, who is affected, and is a human involved before the final decision?`,
+    priority: 10,
+  },
 ];
 
 export function getQuestionsByCategory(category: QAPair['category']): InterviewQuestion[] {
