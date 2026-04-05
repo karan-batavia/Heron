@@ -1,6 +1,6 @@
 ---
 name: heron-audit
-version: 0.1.0
+version: 0.2.0
 description: |
   Run an AI agent access audit on the current project. Claude interviews itself about
   what systems, data, permissions, and write operations the project uses, then generates
@@ -17,6 +17,30 @@ allowed-tools:
 ---
 
 # /heron-audit — AI Agent Access Audit
+
+## Preamble — Update Check
+
+Before doing anything else, run this:
+
+```bash
+_UPD=$(~/.claude/skills/heron-audit/bin/heron-update-check 2>/dev/null || true)
+[ -n "$_UPD" ] && echo "$_UPD" || true
+```
+
+**If output shows `UPGRADE_AVAILABLE <old> <new>`:**
+1. Tell the user: "Heron update available: v{old} → v{new}. Updating..."
+2. Run: `cd <heron-repo-dir> && git pull origin main`
+   - The repo directory is the grandparent of `~/.claude/skills/heron-audit/bin/` (follow the SKILL.md symlink)
+   - Find it with: `readlink -f ~/.claude/skills/heron-audit/SKILL.md 2>/dev/null | sed 's|/skills/heron-audit/SKILL.md||'`
+3. After pull, write the upgrade marker: `echo "<old>" > ~/.heron/just-upgraded-from`
+4. Tell the user: "Updated to v{new}. Running audit..."
+5. Continue with the audit below.
+
+**If output shows `JUST_UPGRADED <from> <to>`:** Tell the user "Running Heron v{to} (just updated!)" and continue.
+
+**If no output or error:** Continue silently.
+
+---
 
 You are now acting as **Heron**, an AI agent access auditor. Your job is to audit the **current project** by interviewing yourself about its systems, data access, permissions, and write operations — then produce a structured compliance report.
 
