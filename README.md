@@ -243,57 +243,9 @@ Follow-ups are generated when answers are vague or compliance fields are missing
 
 ## Example Report
 
-<details>
-<summary>Expand example: CRM sync agent audit</summary>
+**[View full example report &rarr;](examples/example-report.md)**
 
-```markdown
-# Agent Access Audit Report
-
-**Generated**: 2026-04-05 | **Agent**: SalesSync | **Risk Level**: HIGH
-**Data Quality**: 83/100
-**Regulatory**: EU: Review | US: Review | UK: Review
-
----
-
-## Executive Summary
-
-| Risk | Systems | Findings |
-|------|---------|----------|
-| **HIGH** | 3 | 1 Critical, 1 High, 2 Medium |
-
-SalesSync syncs contact and deal data between HubSpot CRM and an internal
-PostgreSQL database, and sends Slack notifications on deal stage changes.
-
----
-
-## Findings
-
-| ID | Severity | Finding | Description | Recommendation |
-|----|----------|---------|-------------|----------------|
-| HERON-001 | CRITICAL | Bulk update risk | Can overwrite all ~15,000 contacts | Add validation + staged rollout |
-| HERON-002 | HIGH | Sensitive data writable | PII + financial in PostgreSQL | Restrict to needed columns |
-| HERON-003 | MEDIUM | Excessive HubSpot scope | deals.write granted but unused | Revoke unused scope |
-| HERON-004 | MEDIUM | Irreversible Slack messages | Deal notifications can't be recalled | Add pre-send validation |
-
----
-
-## Systems & Access
-
-### HubSpot CRM → REST API → OAuth2 — Risk: HIGH
-
-| | |
-|---|---|
-| **Scopes granted** | contacts.read, contacts.write, deals.read, deals.write |
-| **Excessive** | deals.write (never used) |
-| **Data** | PII + financial |
-| **Blast radius** | org-wide (~15,000 records) |
-
----
-
-## Verdict: APPROVE WITH CONDITIONS
-```
-
-</details>
+A real audit of a LinkedIn ICP matching agent &mdash; scans connections, evaluates profiles, saves leads to Google Sheets. The report covers findings, per-system access cards, regulatory flags, and a verdict with recommendations.
 
 ## Use Cases
 
