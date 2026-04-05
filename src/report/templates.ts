@@ -8,9 +8,10 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderAgentProfile(report),
     renderFindings(report.risks),
     renderSystems(report.systems),
+    renderPositiveFindings(report),
     renderVerdict(report),
-    report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     report.regulatoryCompliance ? renderRegulatoryCompliance(report.regulatoryCompliance) : null,
+    report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderTranscript(report.transcript),
     renderDisclaimer(),
   ];
@@ -23,9 +24,26 @@ export function renderMarkdownReport(report: AuditReport): string {
 function renderHeader(report: AuditReport): string {
   const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
   const dqPart = report.dataQuality ? ` | **Data Quality**: ${report.dataQuality.score}/100` : '';
+
+  // Regulatory one-liner
+  let regLine = '';
+  if (report.regulatoryCompliance) {
+    const rc = report.regulatoryCompliance;
+    const regParts: string[] = [];
+    const summarizeJurisdiction = (flags: RegulatoryFlag[]): string => {
+      if (flags.some(f => f.severity === 'action-required')) return 'Action Required';
+      if (flags.some(f => f.severity === 'warning')) return 'Review';
+      return 'Clear';
+    };
+    regParts.push(`EU: ${summarizeJurisdiction(rc.eu)}`);
+    regParts.push(`US: ${summarizeJurisdiction(rc.us)}`);
+    regParts.push(`UK: ${summarizeJurisdiction(rc.uk)}`);
+    regLine = `\n**Regulatory**: ${regParts.join(' | ')}`;
+  }
+
   return `# Agent Access Audit Report
 
-**Generated**: ${report.metadata.date} | **Agent**: ${report.metadata.target} | **Risk Level**: ${report.overallRiskLevel.toUpperCase()} ${riskIcon}${dqPart}`;
+**Generated**: ${report.metadata.date} | **Agent**: ${report.metadata.target} | **Risk Level**: ${report.overallRiskLevel.toUpperCase()} ${riskIcon}${dqPart}${regLine}`;
 }
 
 // ─── Scope & Methodology ────────────────────────────────────────────────────
@@ -77,7 +95,30 @@ ${rows.join('\n')}`;
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 function renderSummary(report: AuditReport): string {
+  // Dashboard: finding counts by severity
+  const allRisks = report.risks;
+  const countBySeverity = (sev: string) => allRisks.filter(r => r.severity === sev).length;
+  const critical = countBySeverity('critical');
+  const high = countBySeverity('high');
+  const medium = countBySeverity('medium');
+  const low = countBySeverity('low');
+
+  // +1 for the standard "self-reported" finding (always medium)
+  const findingsParts: string[] = [];
+  if (critical > 0) findingsParts.push(`${critical} Critical`);
+  if (high > 0) findingsParts.push(`${high} High`);
+  findingsParts.push(`${medium + 1} Medium`); // +1 for standard finding
+  if (low > 0) findingsParts.push(`${low} Low`);
+
+  const systemCount = report.systems.filter(s => !/\bheron\b/i.test(s.systemId)).length;
+
+  const dashboard = `| Risk | Systems | Findings |
+|------|---------|----------|
+| **${report.overallRiskLevel.toUpperCase()}** | ${systemCount} | ${findingsParts.join(', ')} |`;
+
   return `## Executive Summary
+
+${dashboard}
 
 ${report.summary}`;
 }
@@ -119,8 +160,26 @@ No systems were identified in the interview.`;
 ${cards}`;
 }
 
+function computeSystemRisk(sys: SystemAssessment): string {
+  let score = 0;
+  // Blast radius
+  const brScores: Record<string, number> = { 'single-record': 0, 'single-user': 1, 'team-scope': 2, 'org-wide': 3, 'cross-tenant': 4 };
+  score += brScores[sys.blastRadius] ?? 1;
+  // Excessive scopes
+  if (sys.scopesDelta.length > 0) score += 1;
+  // Irreversible writes
+  if (sys.writeOperations.some(w => !w.reversible)) score += 2;
+  // Data sensitivity
+  if (/pii|personal|health|financial|credit/i.test(sys.dataSensitivity)) score += 1;
+
+  if (score >= 5) return 'HIGH';
+  if (score >= 3) return 'MEDIUM';
+  return 'LOW';
+}
+
 function renderSystemCard(sys: SystemAssessment): string {
   const rows: string[] = [];
+  const risk = computeSystemRisk(sys);
 
   // Scopes
   const scopes = sys.scopesRequested.filter(s => s !== 'NOT PROVIDED');
@@ -158,7 +217,7 @@ function renderSystemCard(sys: SystemAssessment): string {
     rows.push(`| **Writes** | ${writesSummary} |`);
   }
 
-  return `### ${sys.systemId}
+  return `### ${sys.systemId} — Risk: ${risk}
 
 | | |
 |---|---|
@@ -185,15 +244,61 @@ function renderFindings(risks: Risk[]): string {
 
   const rows = sorted.map((r, i) => {
     const id = `HERON-${String(i + 1).padStart(3, '0')}`;
-    const mitigation = r.mitigation ? ` ${r.mitigation}` : '';
-    return `| ${id} | ${r.severity.toUpperCase()} | ${r.title} | ${r.description}${mitigation} |`;
+    const remediation = r.mitigation ?? '—';
+    return `| ${id} | ${r.severity.toUpperCase()} | ${r.title} | ${r.description} | ${remediation} |`;
   }).join('\n');
 
   return `## Findings
 
-| ID | Severity | Finding | Description |
-|----|----------|---------|-------------|
+| ID | Severity | Finding | Description | Recommendation |
+|----|----------|---------|-------------|----------------|
 ${rows}`;
+}
+
+// ─── Positive Findings ─────────────────────────────────────────────────────
+
+function renderPositiveFindings(report: AuditReport): string {
+  const positives: string[] = [];
+  const systems = report.systems.filter(s => !/\bheron\b/i.test(s.systemId));
+
+  // All writes reversible
+  const allWrites = systems.flatMap(s => s.writeOperations);
+  if (allWrites.length > 0 && allWrites.every(w => w.reversible)) {
+    positives.push('All write operations are reversible');
+  }
+
+  // No excessive scopes
+  const totalExcessive = systems.reduce((n, s) => n + s.scopesDelta.length, 0);
+  if (totalExcessive === 0 && systems.length > 0) {
+    positives.push('No excessive permissions detected — follows least-privilege principle');
+  }
+
+  // Limited blast radius
+  if (systems.length > 0 && systems.every(s => s.blastRadius === 'single-user' || s.blastRadius === 'single-record')) {
+    positives.push('Blast radius limited to single user/record');
+  }
+
+  // Approval required on writes
+  if (allWrites.length > 0 && allWrites.some(w => w.approvalRequired)) {
+    positives.push('Some write operations require approval before execution');
+  }
+
+  // Low frequency
+  const freqText = systems.map(s => s.frequencyAndVolume).join(' ');
+  if (/\b(1|2|once|twice)\b.*\b(week|month)\b/i.test(freqText)) {
+    positives.push('Low execution frequency reduces operational risk');
+  }
+
+  // No decisions about people
+  if (report.makesDecisionsAboutPeople === false) {
+    positives.push('Does not make automated decisions about people');
+  }
+
+  if (positives.length === 0) return '';
+
+  return `## What's Working Well
+
+${positives.map(p => `- ✓ ${p}`).join('\n')}`;
 }
 
 // ─── Verdict (merged Recommendation + Recommendations) ───────────────────────
