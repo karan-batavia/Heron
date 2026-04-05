@@ -147,7 +147,7 @@ describe('report templates', () => {
   it('includes Heron attribution in footer', () => {
     const md = renderMarkdownReport(sampleReport);
     expect(md).toContain('Heron');
-    expect(md).toContain('github.com/jonydony/Heron');
+    expect(md).toContain('github.com/theonaai/Heron');
   });
 
   it('handles empty systems gracefully', () => {

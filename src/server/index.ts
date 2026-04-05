@@ -554,7 +554,7 @@ async function handleSessionPage(
   <h2>Interview Transcript (<span id="qa-count">${transcript.length}</span> Q&amp;A)</h2>
   <div id="transcript-body">${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}</div>
 
-  <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+  <div class="footer">Powered by <a href="https://github.com/theonaai/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
   ${session.status === 'interviewing' || session.status === 'analyzing' ? `<script>
   (function() {
     var polling = setInterval(function() {
@@ -651,7 +651,7 @@ Important: answer about THIS specific project — what you actually do, what sys
     </tbody>
   </table>
 
-  <div class="footer">Powered by <a href="https://github.com/jonydony/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+  <div class="footer">Powered by <a href="https://github.com/theonaai/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
   <script>
   function copyBlock(id) {
     var el = document.getElementById(id);

@@ -233,7 +233,7 @@ The report must include these sections in this order:
 10. **Data Quality** — Field-by-field coverage table (7 compliance fields)
 11. **Evidence Sources** — List of files analyzed (in collapsible details)
 
-Footer: *This report was generated automatically by [Heron](https://github.com/jonydony/Heron), an open-source AI agent auditor.*
+Footer: *This report was generated automatically by [Heron](https://github.com/theonaai/Heron), an open-source AI agent auditor.*
 
 ## Important Notes
 

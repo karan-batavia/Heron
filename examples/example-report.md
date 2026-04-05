@@ -366,4 +366,4 @@ Human involvement before final decision: Yes — always. The agent only produces
 
 ---
 
-*This report was generated automatically by [Heron](https://github.com/jonydony/Heron), an open-source AI agent auditor. It is based on the agent's self-reported information obtained through a structured interview. This is not a formal security audit, penetration test, or compliance certification. Claims have not been independently verified against tool manifests, runtime behavior, or system configurations. Findings should be independently verified before making access control decisions.*
+*This report was generated automatically by [Heron](https://github.com/theonaai/Heron), an open-source AI agent auditor. It is based on the agent's self-reported information obtained through a structured interview. This is not a formal security audit, penetration test, or compliance certification. Claims have not been independently verified against tool manifests, runtime behavior, or system configurations. Findings should be independently verified before making access control decisions.*

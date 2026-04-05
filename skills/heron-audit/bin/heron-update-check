@@ -61,7 +61,7 @@ if [ -f "$CACHE_FILE" ]; then
 fi
 
 # ── Step 3: Fetch remote VERSION from GitHub ────────────────────────────────
-REMOTE_VERSION=$(curl -sf --max-time 5 "https://raw.githubusercontent.com/jonydony/Heron/main/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
+REMOTE_VERSION=$(curl -sf --max-time 5 "https://raw.githubusercontent.com/theonaai/Heron/main/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
 
 # Network error — assume up to date
 if [ -z "$REMOTE_VERSION" ]; then

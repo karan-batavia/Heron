@@ -50,7 +50,7 @@ Today these questions are answered in Slack threads, docs, or not at all.
 ### Option 1: Interactive CLI
 
 ```bash
-git clone https://github.com/jonydony/Heron.git
+git clone https://github.com/theonaai/Heron.git
 cd Heron && npm install
 
 export HERON_LLM_API_KEY=sk-xxx  # Anthropic, OpenAI, or Gemini key — auto-detected
@@ -356,7 +356,7 @@ src/
 ## Development
 
 ```bash
-git clone https://github.com/jonydony/Heron.git
+git clone https://github.com/theonaai/Heron.git
 cd Heron && npm install
 
 # Run locally
