@@ -28,13 +28,27 @@ _UPD=$(~/.claude/skills/heron-audit/bin/heron-update-check 2>/dev/null || true)
 ```
 
 **If output shows `UPGRADE_AVAILABLE <old> <new>`:**
-1. Tell the user: "Heron update available: v{old} → v{new}. Updating..."
-2. Run: `cd <heron-repo-dir> && git pull origin main`
-   - The repo directory is the grandparent of `~/.claude/skills/heron-audit/bin/` (follow the SKILL.md symlink)
-   - Find it with: `readlink -f ~/.claude/skills/heron-audit/SKILL.md 2>/dev/null | sed 's|/skills/heron-audit/SKILL.md||'`
-3. After pull, write the upgrade marker: `echo "<old>" > ~/.heron/just-upgraded-from`
-4. Tell the user: "Updated to v{new}. Running audit..."
-5. Continue with the audit below.
+
+Check if auto-upgrade is enabled:
+```bash
+cat ~/.heron/config 2>/dev/null | grep -q "auto_upgrade=true" && echo "AUTO" || echo "ASK"
+```
+
+If `AUTO`: upgrade silently (see upgrade steps below).
+
+If `ASK`: Tell the user "Heron update available: v{old} → v{new}" and ask with these options:
+1. **"Yes, upgrade now"** — proceed with upgrade
+2. **"Always keep me up to date"** — write `auto_upgrade=true` to `~/.heron/config`, then upgrade
+3. **"Not now"** — skip update, continue with audit
+4. **"Never ask again"** — write `update_check=false` to `~/.heron/config`, continue with audit
+
+**Upgrade steps:**
+1. Find repo dir: `readlink -f ~/.claude/skills/heron-audit/SKILL.md 2>/dev/null | sed 's|/skills/heron-audit/SKILL.md||'`
+2. Run: `cd <repo-dir> && git pull origin main`
+3. Write marker: `echo "<old>" > ~/.heron/just-upgraded-from`
+4. Clear cache: `rm -f ~/.heron/last-update-check`
+5. Tell user: "Updated to v{new}. Running audit..."
+6. Continue with audit.
 
 **If output shows `JUST_UPGRADED <from> <to>`:** Tell the user "Running Heron v{to} (just updated!)" and continue.
 

@@ -26,6 +26,11 @@ LOCAL_VERSION=""
 
 mkdir -p "$STATE_DIR"
 
+# ── Step 0: Check if updates disabled ───────────────────────────────────────
+if [ -f "$STATE_DIR/config" ] && grep -q "update_check=false" "$STATE_DIR/config" 2>/dev/null; then
+  exit 0
+fi
+
 # ── Step 1: Check "just upgraded" marker ────────────────────────────────────
 if [ -f "$MARKER_FILE" ]; then
   OLD_VERSION=$(cat "$MARKER_FILE" | tr -d '[:space:]')
