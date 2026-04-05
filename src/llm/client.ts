@@ -128,15 +128,15 @@ export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
     );
   }
 
-  // Auto-detect provider from API key format if not explicitly set via env var
+  // Resolve provider: explicit env var > explicit config > auto-detect from key
   const detected = detectProvider(apiKey);
-  const provider = !process.env.HERON_LLM_PROVIDER
-    ? detected
-    : config.provider;
-  // Use default model for the detected provider (don't force anthropic model on openai/gemini)
-  const model = (config.model && config.model !== DEFAULT_MODELS.anthropic)
-    ? config.model
-    : DEFAULT_MODELS[provider];
+  const provider = (process.env.HERON_LLM_PROVIDER as 'anthropic' | 'openai' | 'gemini')
+    ?? config.provider
+    ?? detected;
+  // Resolve model: explicit env var > explicit config > default for provider
+  const model = process.env.HERON_LLM_MODEL
+    ?? config.model
+    ?? DEFAULT_MODELS[provider];
 
   // Log detected configuration
   const maskedKey = apiKey.slice(0, 8) + '...' + apiKey.slice(-4);
