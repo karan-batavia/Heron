@@ -1,10 +1,10 @@
 ---
 name: heron-audit
-version: 0.2.0
+version: 0.3.0
 description: |
   Run an AI agent access audit on the current project. Claude interviews itself about
   what systems, data, permissions, and write operations the project uses, then generates
-  a compliance-grade markdown report. No server, no API keys, no setup required.
+  a compliance-grade markdown report with regulatory flags for EU, US, and UK.
   Use when asked to "audit", "heron audit", "access audit", "security review of agents",
   or "what does this project access".
 allowed-tools:
@@ -36,7 +36,7 @@ cat ~/.heron/config 2>/dev/null | grep -q "auto_upgrade=true" && echo "AUTO" || 
 
 If `AUTO`: upgrade silently (see upgrade steps below).
 
-If `ASK`: Tell the user "Heron update available: v{old} → v{new}" and ask with these options:
+If `ASK`: Tell the user "Heron update available: v{old} -> v{new}" and ask with these options:
 1. **"Yes, upgrade now"** — proceed with upgrade
 2. **"Always keep me up to date"** — write `auto_upgrade=true` to `~/.heron/config`, then upgrade
 3. **"Not now"** — skip update, continue with audit
@@ -61,7 +61,7 @@ You are now acting as **Heron**, an AI agent access auditor. Your job is to audi
 ## How It Works
 
 1. **Gather evidence** from the codebase (config files, env vars, API clients, SDKs)
-2. **Answer 9 structured interview questions** based on what you found
+2. **Answer 13 structured interview questions** based on what you found
 3. **Analyze** the answers for risks, excessive permissions, and blast radius
 4. **Generate** a markdown report and save it
 
@@ -100,7 +100,7 @@ Spawn an **Explore agent** to do a thorough codebase scan for all integration po
 
 ## Step 2: Self-Interview
 
-Answer each of these 9 questions based ONLY on evidence you found in the codebase. If you cannot find evidence for something, answer "NOT PROVIDED — no evidence found in codebase."
+Answer each of these 13 questions based ONLY on evidence you found in the codebase. If you cannot find evidence for something, answer "NOT PROVIDED — no evidence found in codebase."
 
 **CRITICAL RULES:**
 - ONLY report what you can verify from code, config, or documentation
@@ -119,57 +119,111 @@ Answer each of these 9 questions based ONLY on evidence you found in the codebas
 3. What triggers execution (event / schedule / manual / CLI)
 4. One sentence: what this project specifically does
 
-**Q2 — Systems Enumeration**
+**Q2 — Permissions and Scopes**
+For each system, what exact OAuth scopes, API key types, or permissions are configured?
+Look for OAuth scopes in config, API key references, IAM roles, database roles.
+
+**Q3 — Systems Enumeration**
 List every external system this project connects to.
 Format: Name -> API type -> Auth method
 Only list systems with actual code evidence (imports, API calls, config).
 
-**Q3 — Current Permissions**
-For each system, what permissions/scopes are configured?
-Look for OAuth scopes, API key types, IAM roles, database roles.
-Do NOT reveal actual secret values.
-
 **Q4 — Data Sensitivity**
-For each system, what data does the project read?
+For each system, what data does the project handle?
 Classify: PII / financial / credentials / confidential / non-sensitive.
-Give one concrete example of the most sensitive data.
+Format: System -> data types -> classification
 
-**Q5 — Write Operations**
+**Q5 — Detailed Permissions**
+For each system, list exact permissions currently granted.
+Do NOT reveal actual secret values — just describe the type and what access it grants.
+
+**Q6 — Data Read Operations**
+For each system, what data do you read?
+Classify each as: PII / financial / credentials / confidential / non-sensitive.
+Give one concrete example of the most sensitive data accessed.
+
+**Q7 — Reversibility**
+For each system with write access: are the operations reversible?
+Give concrete examples of what can be rolled back vs what cannot.
+
+**Q8 — Write Operations**
 List every write operation. Format:
 Action -> Target system -> Reversible? -> Approval needed? -> Volume/day
 
-**Q6 — Blast Radius**
+**Q9 — Blast Radius**
 For the most dangerous write operation:
-1. How many records/users can it affect?
+1. How many records/users can it affect? (1 record / 1 user / whole team / whole org)
 2. Worst-case scenario if it goes wrong?
 3. Can it be undone?
 
-**Q7 — Frequency and Volume**
+**Q10 — Frequency and Volume**
 1. How often does this run?
 2. How many API calls per run?
-3. One-at-a-time or batches?
+3. One-at-a-time or batches? What batch size?
 
-**Q8 — Excess Permissions**
+**Q11 — Excess Permissions**
 Which configured permissions are never actually used in the code?
 What could safely be revoked?
 
-**Q9 — Worst Case**
+**Q12 — Worst Case Failure**
 Worst realistic failure: wrong data to wrong recipient at max scale.
 What goes wrong, who's affected, how bad, can it be recovered?
 
+**Q13 — Decision-Making About People**
+Does this project make or influence decisions about people?
+Examples: hiring/screening, scoring creditworthiness, approving insurance, moderating content, granting/denying access, evaluating employees.
+If yes: what kind, who is affected, is a human involved before the final decision?
+
 ## Step 3: Analyze
 
-After answering all 9 questions, analyze the answers:
+After answering all 13 questions, analyze the answers:
 
 ### Risk Assessment
 
 For each system, assess:
-- **Severity**: LOW / MEDIUM / HIGH / CRITICAL using this rubric:
+- **Per-system risk**: LOW / MEDIUM / HIGH using this rubric:
   - LOW: Read-only, non-sensitive data, single-user scope
   - MEDIUM: Read access to sensitive data OR write to non-sensitive, reversible
-  - HIGH: Write to team/org data, or PII/financial access, or irreversible ops
-  - CRITICAL: Org-wide writes, cross-tenant, irreversible on sensitive data, unjustified excessive permissions
-- **Overall risk** = highest individual risk, escalated if multiple HIGH risks compound
+  - HIGH: Write to team/org data, or PII/financial access, or irreversible ops, or excessive permissions
+- **Overall risk** = highest individual system risk
+
+### Findings
+
+Generate findings with IDs (HERON-001, HERON-002, ...) for:
+- Excessive permissions (scopes granted but never used)
+- Sensitive data with broad blast radius
+- Irreversible write operations without safeguards
+- Missing approval workflows for high-impact operations
+- Any other security concerns
+
+Each finding needs: severity, title, description, and specific recommendation.
+
+### Positive Findings
+
+Note what's working well:
+- Reversible write operations
+- Limited blast radius
+- Appropriate permissions
+- No decision-making about people
+- Low frequency reduces risk
+
+### Regulatory Flags
+
+Based on the evidence, flag regulatory implications for three jurisdictions:
+
+**EU (EU AI Act + GDPR)**:
+- Does it process PII? -> GDPR applies
+- Does it make decisions about people? -> Check EU AI Act risk classification
+- Does it hold excessive permissions? -> GDPR Article 25 (data protection by design)
+
+**US (SOC 2 + State AI Laws)**:
+- Map to SOC 2 controls: CC1 (governance), CC6 (access), CC7 (monitoring), CC8 (change management)
+- Excessive permissions -> CC6.3 least privilege violation
+- Org-wide blast radius + writes -> CC7.2 / CC8.1
+
+**UK (UK GDPR + ICO)**:
+- Same as GDPR but reference UK GDPR / DPA 2018
+- ICO AI Risk Toolkit recommendations
 
 ### Verdict
 
@@ -178,115 +232,25 @@ Choose one:
 - **APPROVE WITH CONDITIONS** — acceptable but improvements needed
 - **DENY** — excessive access, unacceptable risk without remediation
 
-### Data Quality
-
-Count how many of the 7 compliance fields you could fill from codebase evidence:
-1. systemId
-2. scopesRequested
-3. dataSensitivity
-4. blastRadius
-5. writeOperations
-6. frequencyAndVolume
-7. reversibility
-
-Score: (fields provided / 7) * 100
-
 ## Step 4: Generate Report
 
-Create the report in this exact format and save it to `reports/heron-audit-YYYY-MM-DD.md`:
+Create the report and save it to `reports/heron-audit-YYYY-MM-DD.md`:
 
-```markdown
-# Agent Access Audit Report
+The report must include these sections in this order:
 
-**Generated**: YYYY-MM-DD | **Project**: [name] | **Risk Level**: [LEVEL] | **Data Quality**: [score]/100
+1. **Header** — Generated date, project name, risk level, data quality score, regulatory summary
+2. **Scope & Methodology** — Assessment type, method, duration, limitations
+3. **Executive Summary** — Dashboard table (Risk | Systems | Findings) + 2-3 sentence summary
+4. **Agent Profile** — Purpose, trigger, owner, frequency
+5. **Findings** — Table with ID, Severity, Finding, Description, Recommendation columns
+6. **Systems & Access** — Per-system cards with risk rating, scopes, data, blast radius, writes
+7. **What's Working Well** — Positive findings with checkmarks
+8. **Verdict & Recommendations** — Decision + numbered recommendations + permissions delta
+9. **Regulatory Compliance** — EU, US, UK sub-sections with specific flags
+10. **Data Quality** — Field-by-field coverage table (7 compliance fields)
+11. **Evidence Sources** — List of files analyzed (in collapsible details)
 
----
-
-## Scope & Methodology
-
-**Assessment type**: Automated self-audit (codebase analysis)
-**Method**: Heron skill analyzed project source code, configuration files, and dependencies to identify external system integrations, data access patterns, permissions, and write operations.
-**Limitations**: This assessment is based on static codebase analysis. Runtime behavior, actual API call patterns, and deployed configurations may differ. No network traffic inspection was performed.
-
----
-
-## Executive Summary
-
-[2-3 sentences summarizing findings]
-
----
-
-## Agent Profile
-
-- **Purpose**: [what the project does]
-- **Trigger**: [what initiates it]
-- **Owner**: [team/person]
-
----
-
-## Findings
-
-| ID | Severity | Finding | Description |
-|----|----------|---------|-------------|
-| HERON-001 | [LEVEL] | [title] | [description + mitigation] |
-
----
-
-## Systems & Access
-
-### [System Name — API type — Auth method]
-
-| | |
-|---|---|
-| **Scopes granted** | [scopes or NOT PROVIDED] |
-| **Scopes needed** | [minimum scopes] |
-| **Excessive** | [unnecessary scopes] |
-| **Data** | [sensitivity classification] |
-| **Blast radius** | [scope of impact] |
-| **Frequency** | [how often] |
-| **Writes** | [write operations summary] |
-
-[Repeat for each system]
-
----
-
-## Verdict & Recommendations
-
-**[APPROVE / APPROVE WITH CONDITIONS / DENY]**
-
-1. [Recommendation 1]
-2. [Recommendation 2]
-...
-
----
-
-## Data Quality: [Good/Partial/Poor] ([N]/7 fields)
-
-| Compliance Field | Status |
-|-----------------|--------|
-| systemId | [Provided / NOT PROVIDED] |
-| scopesRequested | [Provided / NOT PROVIDED] |
-| dataSensitivity | [Provided / NOT PROVIDED] |
-| blastRadius | [Provided / NOT PROVIDED] |
-| writeOperations | [Provided / NOT PROVIDED] |
-| frequencyAndVolume | [Provided / NOT PROVIDED] |
-| reversibility | [Provided / NOT PROVIDED] |
-
----
-
-## Evidence Sources
-
-<details>
-<summary>Files analyzed</summary>
-
-- [list of files that provided evidence]
-
-</details>
-
----
-
-*This report was generated automatically by [Heron](https://github.com/jonydony/Heron), an open-source AI agent auditor. This self-audit is based on static codebase analysis — not a formal security audit, penetration test, or compliance certification. Findings should be independently verified before making access control decisions.*
-```
+Footer: *This report was generated automatically by [Heron](https://github.com/jonydony/Heron), an open-source AI agent auditor.*
 
 ## Important Notes
 
