@@ -9,12 +9,19 @@ STATE_DIR="$HOME/.heron"
 CACHE_FILE="$STATE_DIR/last-update-check"
 MARKER_FILE="$STATE_DIR/just-upgraded-from"
 
-# Find the Heron repo root (script is in skills/heron-audit/bin/)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Find the Heron repo root — resolve symlinks first
+SCRIPT_PATH="$0"
+# Follow symlinks to get the real path
+if command -v readlink >/dev/null 2>&1; then
+  REAL_PATH="$(readlink -f "$SCRIPT_PATH" 2>/dev/null || readlink "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")"
+else
+  REAL_PATH="$SCRIPT_PATH"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$REAL_PATH")" && pwd)"
+
+# Script is in skills/heron-audit/bin/ → repo root is ../../..
 if [ -f "$SCRIPT_DIR/../../../VERSION" ]; then
   HERON_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-elif [ -f "$HOME/.claude/skills/heron-audit/bin/../../VERSION" ]; then
-  HERON_DIR="$(cd "$HOME/.claude/skills/heron-audit/bin/../.." && pwd)"
 fi
 
 # Can't find repo — skip silently
