@@ -112,17 +112,28 @@ export function computeRegulatoryFlags(
   const hasPublicPII = /\b(pii|personal|email|name|phone|address|linkedin|profile|title|company)\b/i.test(allText);
   const hasPII = hasSensitivePII || hasPublicPII;
 
-  // Health: exclude technical "health check" mentions
-  const healthMatches = allText.match(/\b(health|medical|patient|hipaa|diagnosis|prescription)\b/gi) ?? [];
-  const hasHealth = healthMatches.length > 0
-    && !/health.?check|health.?endpoint|health.?status|health.?ping/i.test(allText);
+  // Health: require medical-specific terms (not just "health" which matches too broadly)
+  const hasMedicalTerms = /\b(medical|patient|hipaa|diagnosis|prescription|clinical|ehr|emr|phi\b|protected.?health)\b/i.test(allText);
+  const hasHealthInContext = /\b(health)\b/i.test(allText)
+    && !/health.?check|health.?endpoint|health.?status|health.?ping|health(y|ier)/i.test(allText)
+    && /\b(data|record|information|system|care|provider)\b/i.test(allText);
+  const hasHealth = hasMedicalTerms || hasHealthInContext;
+
+  // Filter out interview/orchestration platforms from signal detection
+  const businessSystems = analysis.systems.filter(s => {
+    const id = s.systemId.toLowerCase();
+    return !/\bheron\b/.test(id)
+      && !/internal\s*(orchestrat|api|platform)/.test(id)
+      && !/interview\s*(platform|endpoint|api)/.test(id)
+      && !/audit\s*(platform|endpoint|api)/.test(id);
+  });
 
   const decidesAboutPeople = analysis.makesDecisionsAboutPeople === true;
   const decisionImpact = classifyDecisionImpact(decidesAboutPeople, analysis.decisionMakingDetails);
-  const hasWriteOps = analysis.systems.some(s => s.writeOperations.length > 0);
-  const hasExcessivePerms = analysis.systems.some(s => s.scopesDelta.length > 0);
-  const hasIrreversibleWrites = analysis.systems.some(s => s.writeOperations.some(w => !w.reversible));
-  const hasOrgBlast = analysis.systems.some(s => s.blastRadius === 'org-wide' || s.blastRadius === 'cross-tenant');
+  const hasWriteOps = businessSystems.some(s => s.writeOperations.length > 0);
+  const hasExcessivePerms = businessSystems.some(s => s.scopesDelta.length > 0);
+  const hasIrreversibleWrites = businessSystems.some(s => s.writeOperations.some(w => !w.reversible));
+  const hasOrgBlast = businessSystems.some(s => s.blastRadius === 'org-wide' || s.blastRadius === 'cross-tenant');
   // Read-only agents with org blast are less risky than write agents with org blast
   const hasOrgBlastWithWrites = hasOrgBlast && hasWriteOps;
 
@@ -163,8 +174,8 @@ export function computeRegulatoryFlags(
   } else if (hasPublicPII) {
     eu.push({
       framework: 'GDPR',
-      severity: 'warning',
-      description: 'Agent processes publicly available personal data (names, titles, profiles). GDPR still applies: ensure lawful basis (likely legitimate interest under Art. 6), document processing activity. DPIA likely not required for public professional profiles.',
+      severity: 'info',
+      description: 'Agent processes publicly available personal data (names, titles, profiles). GDPR applies: lawful basis likely legitimate interest (Art. 6). DPIA not required for public professional profiles.',
     });
   }
 
@@ -261,8 +272,8 @@ export function computeRegulatoryFlags(
   } else if (hasPublicPII) {
     uk.push({
       framework: 'UK GDPR / DPA 2018',
-      severity: 'warning',
-      description: 'Agent processes publicly available personal data. UK GDPR still applies: ensure lawful basis (likely legitimate interest), document processing. DPIA likely not required for public professional data.',
+      severity: 'info',
+      description: 'Agent processes publicly available personal data. UK GDPR applies: lawful basis likely legitimate interest. DPIA not required for public professional data.',
     });
   }
 

@@ -1,5 +1,17 @@
 import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, RegulatoryCompliance, RegulatoryFlag } from './types.js';
 
+/** Filter out interview/orchestration platforms that aren't real business systems */
+function isBusinessSystem(s: SystemAssessment): boolean {
+  const id = s.systemId.toLowerCase();
+  if (/\bheron\b/.test(id)) return false;
+  if (/internal\s*(orchestrat|api|platform)/.test(id)) return false;
+  if (/interview\s*(platform|endpoint|api)/.test(id)) return false;
+  if (/audit\s*(platform|endpoint|api)/.test(id)) return false;
+  // Platform session token with no real scopes = orchestration layer
+  if (/platform.?session.?token/i.test(id) && s.scopesRequested.length === 0) return false;
+  return true;
+}
+
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
     renderHeader(report),
@@ -54,7 +66,7 @@ function renderScopeAndMethodology(report: AuditReport): string {
 
 **Assessment type**: Automated structured interview
 
-**Method**: Heron conducted a ${report.metadata.questionsAsked}-question interview covering agent purpose, data access, permissions, write operations, and operational frequency. Duration: ${Math.round(report.metadata.interviewDuration / 1000)}s.
+**Method**: Heron conducted a ${report.metadata.questionsAsked}-question interview covering agent purpose, data access, permissions, write operations, and operational frequency. **Duration**: ${Math.round(report.metadata.interviewDuration / 1000)}s.
 
 **Limitations**: This assessment is based solely on the agent's self-reported information. No runtime analysis, code review, or network traffic inspection was performed. Findings should be verified against actual system configurations.`;
 }
@@ -104,14 +116,14 @@ function renderSummary(report: AuditReport): string {
   const medium = countBySeverity('medium');
   const low = countBySeverity('low');
 
-  // +1 for the standard "self-reported" finding (always medium)
   const findingsParts: string[] = [];
   if (critical > 0) findingsParts.push(`${critical} Critical`);
   if (high > 0) findingsParts.push(`${high} High`);
-  findingsParts.push(`${medium + 1} Medium`); // +1 for standard finding
+  if (medium > 0) findingsParts.push(`${medium} Medium`);
   if (low > 0) findingsParts.push(`${low} Low`);
+  if (findingsParts.length === 0) findingsParts.push('None');
 
-  const systemCount = report.systems.filter(s => !/\bheron\b/i.test(s.systemId)).length;
+  const systemCount = report.systems.filter(isBusinessSystem).length;
 
   const dashboard = `| Risk | Systems | Findings |
 |------|---------|----------|
@@ -145,8 +157,7 @@ ${lines.join('\n')}`;
 // ─── Per-System Cards ────────────────────────────────────────────────────────
 
 function renderSystems(systems: SystemAssessment[]): string {
-  // Filter out Heron itself — agent sometimes reports the interview endpoint as a system
-  const businessSystems = systems.filter(s => !/\bheron\b/i.test(s.systemId));
+  const businessSystems = systems.filter(isBusinessSystem);
 
   if (businessSystems.length === 0) {
     return `## Systems & Access
@@ -228,17 +239,7 @@ ${rows.join('\n')}`;
 // ─── Findings ───────────────────────────────────────────────────────────────
 
 function renderFindings(risks: Risk[]): string {
-  // Standard findings that always appear in self-reported interviews
-  const standardFindings: Risk[] = [
-    {
-      severity: 'medium',
-      title: 'Self-reported evidence only',
-      description: 'All data in this report is based on the agent\'s self-reported answers. Claims have not been verified against tool manifests, runtime behavior, or system configurations.',
-      mitigation: 'Verify key claims (scopes, data access, write operations) against actual system configurations before granting production access.',
-    },
-  ];
-
-  const allRisks = [...standardFindings, ...risks];
+  const allRisks = [...risks];
 
   const sorted = allRisks
     .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
@@ -260,7 +261,7 @@ ${rows}`;
 
 function renderPositiveFindings(report: AuditReport): string {
   const positives: string[] = [];
-  const systems = report.systems.filter(s => !/\bheron\b/i.test(s.systemId));
+  const systems = report.systems.filter(isBusinessSystem);
 
   // All writes reversible
   const allWrites = systems.flatMap(s => s.writeOperations);
@@ -328,8 +329,7 @@ function renderVerdict(report: AuditReport): string {
   const excessiveBySystem = new Map<string, string[]>();
   const missingBySystem = new Map<string, string[]>();
   for (const sys of report.systems) {
-    // Skip Heron itself if agent reported it as a connected system
-    if (/\bheron\b/i.test(sys.systemId)) continue;
+    if (!isBusinessSystem(sys)) continue;
 
     for (const scope of sys.scopesDelta) {
       if (scope !== 'NOT PROVIDED') {
