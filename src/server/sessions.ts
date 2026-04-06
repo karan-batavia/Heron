@@ -35,6 +35,7 @@ export interface Session {
   createdAt: Date;
   updatedAt: Date;
   questionsAsked: number;
+  coreQuestionsAsked: number;
   /** Structured event log for ground truth comparison */
   eventLog: SessionEvent[];
   error?: string;
@@ -75,6 +76,7 @@ export class SessionManager {
       createdAt: new Date(),
       updatedAt: new Date(),
       questionsAsked: 0,
+      coreQuestionsAsked: 1,  // First question is always core
       eventLog: [],
     };
 
@@ -142,7 +144,8 @@ export class SessionManager {
       this.logEvent(session, 'question', { questionId: nextQ.id, text: nextQ.text, category: nextQ.category });
       const total = session.protocol.totalCoreQuestions;
       const isFollowUp = nextQ.id.startsWith('followup_');
-      const qLabel = isFollowUp ? 'Follow-up' : `Q${session.questionsAsked + 1}/${total}`;
+      if (!isFollowUp) session.coreQuestionsAsked++;
+      const qLabel = isFollowUp ? 'Follow-up' : `Q${session.coreQuestionsAsked}/${total}`;
       logger.raw('');
       logger.raw(`  \x1b[36m${qLabel}\x1b[0m \x1b[2m[${nextQ.category}]\x1b[0m`);
       logger.raw(`  \x1b[36mQ:\x1b[0m ${nextQ.text}`);
