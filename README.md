@@ -26,20 +26,17 @@
 
 ---
 
-> You wouldn't give a contractor the keys to your office without checking their ID.
-> Why give an AI agent production access without an audit?
+## Why I built this
 
-## Why Heron?
+Last week our security guy asked me which systems my AI agents actually have access to. I didn't have a good answer. So I built Heron &mdash; now he can ask the agent himself.
 
-AI agents are requesting access to production systems &mdash; CRMs, databases, APIs, internal tools. Before granting access, someone needs to answer:
+The alternative to Heron is a Google Doc that nobody updates. The doc is wrong the day it's written, because the agent's permissions evolve and nobody goes back to fix the doc.
 
-- **What** does this agent actually do in this specific project?
-- **What data** does it handle &mdash; and does it need write access?
-- **What happens** if something goes wrong?
+Heron interviews the agent directly. The agent answers about itself &mdash; what systems it touches, what data it handles, what permissions it has, what happens when something goes wrong. You get a structured audit report with risk scoring, findings, and a permissions delta showing what the agent has versus what it actually needs.
 
-Today these questions are answered in Slack threads, docs, or not at all.
+I tested it on a real content pipeline agent. Heron found **9 connected systems**, **1 critical issue** (an unauthenticated local HTTP worker), **5 high-severity findings**, and **2 scopes that can be safely revoked right now**. Total time: about 5 minutes from one command.
 
-**Heron answers them automatically.** Point agents at it, get a structured audit report. No SDK integration, no code changes to the agent.
+No SDK integration. No code changes to the agent. Works with any agent that speaks the OpenAI API.
 
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
@@ -55,18 +52,17 @@ Today these questions are answered in Slack threads, docs, or not at all.
 
 ## Quick Start
 
-### Option 1: Interactive CLI
+Three ways to use Heron, depending on your setup.
+
+### Option 1: Local CLI (open source)
+
+One command. No install, no config, no env vars. The CLI prompts for your LLM API key on first run.
 
 ```bash
-git clone https://github.com/theonaai/Heron.git
-cd Heron && npm install
-
-export HERON_LLM_API_KEY=sk-xxx  # Anthropic, OpenAI, or Gemini key — auto-detected
-
 npx heron-ai
 ```
 
-An interactive menu lets you choose:
+An interactive menu lets you choose between two modes:
 
 ```
   Heron — AI Agent Auditor
@@ -75,44 +71,77 @@ An interactive menu lets you choose:
     Scan an agent   you connect to an agent
 ```
 
-### Option 2: Use the hosted version
+#### Mode A: Server (`heron-ai serve`)
 
-Paste this into your AI agent's chat:
+Heron runs locally and waits for agents to connect. Two ways to point your agent at it:
+
+**1) Paste a prompt into your agent's chat** &mdash; works with any agent
 
 ```
 I need you to complete a security access review for this project.
 Make sequential API calls to the Heron endpoint until it says "Interview complete".
 
 Step 1 — Start the interview:
-POST https://heron-open-source-production.up.railway.app/v1/chat/completions
+POST http://localhost:3700/v1/chat/completions
 Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
 
-The response will contain a question and a session ID (in the text and in the "heron_session_id" JSON field).
+The response will contain a question and a session ID (in the "heron_session_id" JSON field).
 
 Step 2 — Send each answer:
-POST https://heron-open-source-production.up.railway.app/v1/chat/completions
+POST http://localhost:3700/v1/chat/completions
 Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}],"heron_session_id":"SESSION_ID_FROM_STEP_1"}
 
-Step 3 — Repeat step 2 with each new answer until the response says "Interview complete".
+Step 3 — Repeat step 2 until the response says "Interview complete".
 
 Important: answer about THIS specific project — what you actually do, what systems
 you connect to, what data you handle. Not general capabilities. Never reveal actual
 secret values — just describe credential types.
 ```
 
-View reports at: https://heron-open-source-production.up.railway.app
-
-### Option 3: OPENAI_BASE_URL
-
-Redirect any OpenAI-compatible agent to Heron without changing the agent's code:
+**2) Override `OPENAI_BASE_URL`** &mdash; zero code changes to the agent
 
 ```bash
 OPENAI_BASE_URL=http://localhost:3700/v1 python your_agent.py
 ```
 
-The agent thinks it's talking to GPT. Heron intercepts, runs the interview, generates a report.
+The agent thinks it's talking to GPT. Heron intercepts, runs the interview, generates the report.
 
-### Option 4: Claude Code skill (zero setup)
+#### Mode B: Scan (`heron-ai scan`)
+
+Heron connects directly to your agent's chat API and runs the interview itself.
+
+```bash
+npx heron-ai scan --target http://your-agent/v1/chat/completions
+```
+
+### Option 2: Hosted version (no setup)
+
+Sign in at **https://heron.ing** and paste this into your AI agent's chat:
+
+```
+I need you to complete a security access review for this project.
+Make sequential API calls to the Heron endpoint until it says "Interview complete".
+
+Step 1 — Start the interview:
+POST https://heron.ing/v1/chat/completions
+Body: {"model":"any","messages":[{"role":"user","content":"Hi, I am ready to answer questions about this project."}]}
+
+The response will contain a question and a session ID (in the "heron_session_id" JSON field).
+
+Step 2 — Send each answer:
+POST https://heron.ing/v1/chat/completions
+Body: {"model":"any","messages":[{"role":"user","content":"YOUR ANSWER HERE"}],"heron_session_id":"SESSION_ID_FROM_STEP_1"}
+
+Step 3 — Repeat step 2 until the response says "Interview complete".
+
+Important: answer about THIS specific project — what you actually do, what systems
+you connect to, what data you handle. Not general capabilities. Never reveal actual
+secret values — just describe credential types.
+```
+
+Reports save to your dashboard automatically. Sign in with Google, no credit card, free.
+
+### Option 3: Claude Code skill (zero setup)
 
 If you use [Claude Code](https://claude.ai/code), install the `/heron-audit` skill:
 
@@ -126,7 +155,7 @@ Then in any project:
 /heron-audit
 ```
 
-Claude interviews itself about the current project and generates an audit report.
+Claude interviews itself about the current project and generates an audit report. No server, no API key, no setup.
 
 ## How It Works
 
@@ -280,8 +309,10 @@ Heron auto-detects the provider from your API key:
 | `sk-` | OpenAI | gpt-5.4-mini |
 | `AIza` | Gemini | gemini-2.0-flash |
 
+The CLI prompts for your key on first run, or you can pass it via env var:
+
 ```bash
-export HERON_LLM_API_KEY=sk-xxx   # that's it — provider and model auto-selected
+export HERON_LLM_API_KEY=sk-xxx   # optional — provider and model auto-selected
 ```
 
 Override with `--llm-provider` and `--llm-model` if needed.
@@ -368,7 +399,7 @@ git clone https://github.com/theonaai/Heron.git
 cd Heron && npm install
 
 # Run locally
-HERON_LLM_API_KEY=sk-xxx npx heron-ai serve
+npx heron-ai serve
 
 # Tests
 npm test
@@ -377,6 +408,13 @@ npm test
 ## Contributing
 
 Issues and PRs welcome.
+
+## Contact
+
+Questions, feedback, ideas? Reach out:
+
+- **LinkedIn:** [Ilya Ivanov](https://www.linkedin.com/in/ilyaivanov0/)
+- **Telegram:** [@Ilya_Ivanov0](https://t.me/Ilya_Ivanov0)
 
 ## License
 
