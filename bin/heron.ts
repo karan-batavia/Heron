@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('heron')
   .description('Open-source agent checkpoint — vet AI agents before granting production access')
-  .version('0.1.0');
+  .version('0.1.3');
 
 // ─── scan: active mode (Heron → Agent) ───────────────────────────────────
 
