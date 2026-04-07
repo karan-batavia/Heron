@@ -1,7 +1,7 @@
 # Agent Access Audit Report
 
-**Generated**: 2026-04-05 | **Agent**: session:sess_6eb58954bec95c7e | **Risk Level**: MEDIUM  | **Data Quality**: 100/100
-**Regulatory**: EU: Review | US: Clear | UK: Review
+**Generated**: 2026-04-07 | **Agent**: session:sess_d7168d284aef8fb6 | **Risk Level**: MEDIUM  | **Data Quality**: 100/100
+**Regulatory**: EU: Needs Clarification | US: Needs Clarification | UK: Needs Clarification
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Assessment type**: Automated structured interview
 
-**Method**: Heron conducted a 13-question interview covering agent purpose, data access, permissions, write operations, and operational frequency. **Duration**: 184s.
+**Method**: Heron conducted a 13-question interview covering agent purpose, data access, permissions, write operations, and operational frequency. **Duration**: 254s.
 
 **Limitations**: This assessment is based solely on the agent's self-reported information. No runtime analysis, code review, or network traffic inspection was performed. Findings should be verified against actual system configurations.
 
@@ -19,18 +19,18 @@
 
 | Risk | Systems | Findings |
 |------|---------|----------|
-| **MEDIUM** | 2 | 1 High, 1 Medium |
+| **MEDIUM** | 9 | 1 Critical, 5 High |
 
-The AI agent is designed to scan LinkedIn connections for potential sales leads and save them in Google Sheets. There were several repeated responses throughout the interview, which may impact reliability of some details. Overall, the agent processes and writes sensitive PII data while triggering based on user input.
+The agent described an automatically running educational content pipeline that reads lesson rows from Google Sheets, generates Russian lesson content with LLMs, creates Google Docs/Drive artifacts, generates slide decks via Gamma, and uploads or publishes results to Wellkid with Telegram alerts. It also disclosed a separate school-director parsing workflow that handles contact data and influences human-verifier review, so the interview includes both content operations and a narrower people-related workflow.
 
 ---
 
 ## Agent Profile
 
-- **Purpose**: This agent scans the user's LinkedIn 1st-degree connections, identifies profiles matching the Ziona Guardian Ideal Customer Profile (ICP) criteria across 5 defined personas, and saves qualified leads with personalized intro messages into a new Google Sheet.
-- **Trigger**: Manual trigger — the user explicitly requests the agent to run.
-- **Owner**: The user who initiated this agent run via Theona.
-- **Frequency**: 0–1 runs per week; 1 search call; 20–100 profile scrape calls per run.
+- **Purpose**: Automatically reads lesson rows from Google Sheets, generates Russian lesson content, writes Google Docs and Drive artifacts, creates slide decks through Gamma, and can upload or publish the results to Wellkid or another LMS with Telegram alerts.
+- **Trigger**: Mainly manual runs and batch scripts, plus Google Sheets dispatcher and monitor flows and local worker API calls; there are also n8n workflow templates.
+- **Owner**: an Ilya Ivanov operated local deployment for educational content operations
+- **Frequency**: usually 0 to 50 rows per day when a batch is running; batch size up to 50 items
 
 ---
 
@@ -38,42 +38,120 @@ The AI agent is designed to scan LinkedIn connections for potential sales leads 
 
 | ID | Severity | Finding | Description | Recommendation |
 |----|----------|---------|-------------|----------------|
-| HERON-001 | HIGH | Potential Incorrect Data Classification | If the ICP matching logic misclassifies profiles, the user may inadvertently reach out to irrelevant leads, causing reputational damage. | Implement validation steps for data accuracy before writing leads to the spreadsheet. |
-| HERON-002 | MEDIUM | Excessive OAuth Scopes | The agent currently requests broader OAuth scopes than necessary, especially for Google Sheets, which could lead to unnecessary data exposure. | Restrict the OAuth scopes to only those that are essential for the functionalities used. |
+| HERON-001 | CRITICAL | Local HTTP worker has no built-in authentication | The FastAPI local content worker has no auth layer, so any caller that can reach the local HTTP port can invoke health and processing endpoints. | Bind only to localhost or a protected network, add authentication or mTLS, and firewall the port so only the intended orchestrator can reach it. |
+| HERON-002 | HIGH | Broad write access to Google Sheets queue and status trackers | The deployment can write lesson processing state, dates, links, checkbox fields, and responsible markers in Google Sheets, with support scripts that can touch many rows in a subject tab. This is team-scoped operational data and could corrupt workflow tracking if misused. | Reduce to the narrowest writable sheet scope possible, separate read-only inspection from write automation, and require operator confirmation for reconciliation scripts that touch many rows. |
+| HERON-003 | HIGH | Broad Google Docs and Google Drive write access over proprietary educational content | The agent can create or overwrite lesson documents, create folders, move files, and upload exported presentations. The data handled is confidential internal educational content, so mistakes can alter or expose course materials. | Use dedicated service accounts or restricted folders, separate draft and publish locations, and constrain file creation/move permissions to lesson-specific directories only. |
+| HERON-004 | HIGH | Wellkid account-level upload, patch, publish, and archive operations across a subject tree | The most dangerous path can affect a whole subject or course tree inside one Wellkid organization account. Wrong archives, patches, or publishes can pollute many lessons and are only partially reversible. | Require human approval for execute mode, add preflight validation of target subject/catalog IDs, and implement immutable change logs plus rollback plans before publishing or archiving. |
+| HERON-005 | HIGH | Telegram notifications may expose internal links or identifiers to the wrong chat | Telegram messages can contain topic titles, row numbers, internal topic IDs, stage timings, document and slide links, publish status, and error messages. A misconfigured chat ID could disclose operational information to unintended recipients. | Lock chat IDs in configuration, add allowlist checks before sending, and remove sensitive links or IDs from alert payloads where possible. |
+| HERON-006 | HIGH | Access to personal contact data in the separate school-director parsing workflow | The agent stated there is a separate workflow that handles director names and discovered phone numbers, tokenizes phone numbers with HMAC, and may expose full numbers for verifier workflows. That is PII and can be disclosed to wrong recipients if misrouted. | Keep this workflow isolated from the content pipeline, minimize exposure of full phone numbers, and enforce human review before any verifier export is released. |
 
 ---
 
 ## Systems & Access
 
-### LinkedIn (via Apify LinkedIn Scraper) → REST API → API Key — Risk: MEDIUM
+### Google Sheets → Google Sheets API → OAuth2 user token or Google service account credentials — Risk: LOW
+
+| | |
+|---|---|
+| **Scopes granted** | https://www.googleapis.com/auth/spreadsheets, https://www.googleapis.com/auth/spreadsheets.readonly |
+| **Scopes needed** | https://www.googleapis.com/auth/spreadsheets |
+| **Excessive** | https://www.googleapis.com/auth/spreadsheets.readonly |
+| **Data** | confidential internal operational curriculum data; also includes lesson numbers, lesson types, topic titles, module/theme names, direction/subject names, processing statuses, execution dates, responsible marker, generated-material links, platform status, and platform lesson/folder links/IDs |
+| **Blast radius** | single-record |
+| **Frequency** | usually 0 to 50 rows per day when a batch is running; batch size up to 50 items |
+| **Writes** | Mark lesson row as processing → Google Sheets processing tab (reversible, usually 0 to 50 rows per day when a batch is running); Mark lesson row as done or failed, including links, checkbox, dates, and platform fields → Google Sheets processing tab (reversible, usually 0 to 50 rows per day when a batch is running); Bulk link or reconciliation updates → Google Sheets subject tab (reversible, occasional batch operation, potentially many rows in one subject) |
+
+### Google Docs → Google Docs API → OAuth2 user token or Google service account credentials — Risk: MEDIUM
+
+| | |
+|---|---|
+| **Scopes granted** | https://www.googleapis.com/auth/documents, https://www.googleapis.com/auth/documents.readonly |
+| **Scopes needed** | https://www.googleapis.com/auth/documents |
+| **Excessive** | https://www.googleapis.com/auth/documents.readonly |
+| **Data** | confidential internal educational content, including generated lecture text, practical assignments, self study tasks, slide source text, document titles, folder names, document URLs, PDF presentation files, and related course metadata |
+| **Blast radius** | single-record |
+| **Frequency** | usually 0 to 50 docs per day |
+| **Writes** | Create or overwrite generated lesson document → Google Docs (**irreversible**, usually 0 to 50 docs per day) |
+
+### Google Drive → Google Drive API → OAuth2 user token or Google service account credentials — Risk: LOW
+
+| | |
+|---|---|
+| **Scopes granted** | https://www.googleapis.com/auth/drive, https://www.googleapis.com/auth/drive.readonly |
+| **Scopes needed** | https://www.googleapis.com/auth/drive |
+| **Excessive** | https://www.googleapis.com/auth/drive.readonly |
+| **Data** | confidential internal operational and content data, including folder names, file names, file IDs, document and PDF locations, and lesson folder structure |
+| **Blast radius** | single-record |
+| **Frequency** | usually 0 to 50 folders per day; usually 0 to 50 file operations per day; usually 0 to 50 uploads per day |
+| **Writes** | Create lesson folders → Google Drive (reversible, usually 0 to 50 folders per day); Create Google Doc file in Drive or move files into lesson folders → Google Drive (reversible, usually 0 to 50 file operations per day); Upload exported presentation PDF or PPTX → Google Drive (reversible, usually 0 to 50 uploads per day) |
+
+### Google Gemini → HTTPS API → API key — Risk: LOW
 
 | | |
 |---|---|
 | **Scopes granted** | *NOT PROVIDED* |
-| **Excessive** | LinkedIn read access for scraping is excessive as it does not need broader access. |
-| **Data** | PII (full names, LinkedIn profile URLs, job titles, company names of LinkedIn connections) |
+| **Data** | confidential internal educational content; generated model responses containing lesson drafts in JSON |
 | **Blast radius** | single-user |
-| **Frequency** | 0–1 runs per week; 1 search call; 20–100 profile scrape calls per run. |
+| **Frequency** | about 10 to 20 external API calls per lesson in a normal run, with one LLM generation call per lesson |
 
-### Google Sheets → REST API → OAuth2 — Risk: MEDIUM
+### OpenAI → HTTPS API → API key — Risk: LOW
 
 | | |
 |---|---|
-| **Scopes granted** | https://www.googleapis.com/auth/spreadsheets |
-| **Scopes needed** | https://www.googleapis.com/auth/drive.file |
-| **Excessive** | The broader 'spreadsheets' access can be reduced to 'drive.file'. |
-| **Data** | PII (full names, LinkedIn profile URLs, job titles, company names of LinkedIn connections); AI-generated content (personalized intro messages and ICP fit reasoning per person) |
+| **Scopes granted** | *NOT PROVIDED* |
+| **Excessive** | NOT PROVIDED |
+| **Data** | confidential internal educational content; generated model responses containing lesson drafts in JSON |
 | **Blast radius** | single-user |
-| **Frequency** | 1 spreadsheet created per run; 30–130 total API calls per run. |
-| **Writes** | Create spreadsheet → Google Sheets (new spreadsheet) (reversible, 1 per run); Write header row → Google Sheets (new spreadsheet) (reversible, 1 per run); Format header row (bold) → Google Sheets (new spreadsheet) (reversible, 1 per run); Append lead rows → Google Sheets (new spreadsheet) (reversible, 10–100 per run); Set column filters → Google Sheets (new spreadsheet) (reversible, 1 per run) |
+| **Frequency** | about 10 to 20 external API calls per lesson in a normal run, with one LLM generation call per lesson |
+
+### Gamma → HTTPS API → API key sent as X-API-KEY and Bearer authorization for compatibility — Risk: MEDIUM
+
+| | |
+|---|---|
+| **Scopes granted** | *NOT PROVIDED* |
+| **Data** | confidential internal educational content, including generation status, export URLs, and exported presentation files |
+| **Blast radius** | single-user |
+| **Frequency** | about 10 to 20 external API calls per lesson in a normal run; usually 0 to 50 generations per day |
+| **Writes** | Start slide generation job → Gamma (**irreversible**, usually 0 to 50 generations per day) |
+
+### Telegram → Telegram Bot HTTP API → bot token — Risk: HIGH
+
+| | |
+|---|---|
+| **Scopes granted** | *NOT PROVIDED* |
+| **Excessive** | NOT PROVIDED |
+| **Data** | chat IDs and chat metadata are PII or operational identifiers; notification contents are confidential internal operational data and can include topic titles, row numbers, internal topic IDs, stage timings, document and slide links, publish status, and error messages |
+| **Blast radius** | single-user |
+| **Frequency** | usually 0 to 50 messages per day tied to successes and failures |
+| **Writes** | Send operational notification → Telegram (**irreversible**, usually 0 to 50 messages per day tied to successes and failures); Write telegram outbox log → local file .state/telegram_outbox.log (reversible, same order as Telegram notifications) |
+
+### Wellkid → HTTPS REST API → login and password to obtain Bearer accessToken and refreshToken — Risk: HIGH
+
+| | |
+|---|---|
+| **Scopes granted** | *NOT PROVIDED* |
+| **Excessive** | NOT PROVIDED |
+| **Data** | confidential internal educational platform data, including existing catalogs, material records, material details, upload responses, and status fields for lesson materials; also uses account-level actions such as catalog creation, material creation, file upload, material patching, and publish or archive operations |
+| **Blast radius** | team-scope |
+| **Frequency** | occasional during upload runs; batch dependent; one or more records per lesson; subject wide batch operations possible |
+| **Writes** | Authenticate and refresh session → Wellkid API (reversible, occasional during upload runs); Create subject or lesson catalogs → Wellkid API (reversible, batch dependent, from a few to many per run); Upload PDF files → Wellkid API (**irreversible**, batch dependent); Create material records → Wellkid API (reversible, batch dependent, often one or more records per lesson); Patch material catalog, attaches, or metadata → Wellkid API (reversible, occasional to subject wide batch operations); Publish material or set ACTIVE status → Wellkid API (reversible, batch dependent); Archive duplicate or incorrect materials → Wellkid API (**irreversible**, occasional subject wide cleanup runs) |
+
+### Local content worker → local HTTP API on localhost → no built in auth in the FastAPI app — Risk: LOW
+
+| | |
+|---|---|
+| **Scopes granted** | *NOT PROVIDED* |
+| **Excessive** | NOT PROVIDED |
+| **Data** | confidential internal operational data, including topic job payloads, status objects, stage names, output URLs, publish status, and error messages |
+| **Blast radius** | single-record |
+| **Frequency** | usually 0 to 50 jobs per day |
+| **Writes** | Create async job state in memory → local FastAPI worker memory (reversible, usually 0 to 50 jobs per day); Write JSON batch reports → local .state JSON report files (reversible, occasional, per batch run); Write idempotency result cache → local SQLite file .state/idempotency.sqlite (reversible, usually 0 to 50 cached results per day) |
 
 ---
 
 ## What's Working Well
 
-- ✓ All write operations are reversible
-- ✓ Blast radius limited to single user/record
-- ✓ Low execution frequency reduces operational risk
+- ✓ Some write operations require approval before execution
 
 ---
 
@@ -82,17 +160,21 @@ The AI agent is designed to scan LinkedIn connections for potential sales leads 
 **APPROVE WITH CONDITIONS**
 
 1. Verify self-reported claims against actual system configurations before granting production access
-2. Limit Google Sheets OAuth access to 'drive.file' to safeguard against broader access.
-3. Consider additional validation for ICP matching logic to minimize false positives.
+2. Remove or disable unused OpenAI access from the active deployment because CONTENT_PROVIDER is Gemini.
+3. Remove or disable the generic LMS adapter unless it is explicitly needed, since ENABLE_LMS_UPLOAD is false and LMS_API_BASE_URL is empty.
+4. Replace broad Google Drive and Google Docs write scopes with the narrowest workable permissions and separate read-only support scripts from the main writer path.
+5. Require explicit operator approval for Wellkid reconciliation, migration, publish, and archive runs.
+6. Add authentication to the local FastAPI worker or restrict it to localhost-only access with firewall controls.
+7. Minimize Telegram message contents to avoid leaking internal links, IDs, and error details.
+8. Keep the separate director-contact parsing workflow isolated and human-reviewed before any final use decision.
+9. Maintain audit logs and retained run telemetry so usage and change impact can be verified in future reviews.
 
 **Permissions delta**:
 
 *Excessive (can be revoked):*
-- **LinkedIn (via Apify LinkedIn Scraper) → REST API → API Key**: LinkedIn read access for scraping is excessive as it does not need broader access.
-- **Google Sheets → REST API → OAuth2**: The broader 'spreadsheets' access can be reduced to 'drive.file'.
-
-*Minimum needed:*
-- **Google Sheets → REST API → OAuth2**: https://www.googleapis.com/auth/drive.file
+- **Google Sheets → Google Sheets API → OAuth2 user token or Google service account credentials**: https://www.googleapis.com/auth/spreadsheets.readonly
+- **Google Docs → Google Docs API → OAuth2 user token or Google service account credentials**: https://www.googleapis.com/auth/documents.readonly
+- **Google Drive → Google Drive API → OAuth2 user token or Google service account credentials**: https://www.googleapis.com/auth/drive.readonly
 
 
 ---
@@ -103,14 +185,11 @@ The AI agent is designed to scan LinkedIn connections for potential sales leads 
 
 ### EU (EU AI Act + GDPR)
 
-- **EU AI Act**
-  Agent influences outcomes for people (scoring, ranking, filtering) but does not make binding decisions with legal effects. Likely LIMITED risk under EU AI Act. Transparency obligations apply (Article 50) — users must be informed they interact with an AI system.
+- **EU AI Act** `NEEDS CLARIFICATION`
+  Agent reports making decisions about people, but the impact level is unclear. Clarify: does this agent make decisions with legal or similarly significant effects (hiring, credit, insurance)? If yes → HIGH-RISK classification. If it only scores/ranks/recommends → likely LIMITED risk.
 
 - **GDPR**
   Agent processes publicly available personal data (names, titles, profiles). GDPR applies: lawful basis likely legitimate interest (Art. 6). DPIA not required for public professional profiles.
-
-- **GDPR Article 22**
-  Agent influences decisions about people but without binding legal effects (scoring, ranking). Article 22 may not apply directly, but transparency and data subject rights should be maintained.
 
 - **GDPR Article 25** `REVIEW`
   Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — GDPR requires data protection by design and by default (data minimization principle).
@@ -120,13 +199,22 @@ The AI agent is designed to scan LinkedIn connections for potential sales leads 
 - **SOC 2**
   SOC 2 control mapping: Agent identity (CC1), system access (CC6.1), auth (CC6.2), permissions (CC6.3), data sensitivity (CC6.7), write operations (CC8.1). Least privilege violation at CC6.3 — narrow scopes to minimum needed.
 
+- **Colorado AI Act (SB 24-205)** `NEEDS CLARIFICATION`
+  Agent makes decisions about people, but unclear if they fall into regulated domains (employment, credit, insurance, housing, education, healthcare, legal). Clarify the decision type to determine if Colorado AI Act applies.
+
+- **HIPAA** `NEEDS CLARIFICATION`
+  Health-related data detected. HIPAA applies only if the organization is a covered entity or business associate. Clarify: is this a healthcare provider, health plan, or clearinghouse? If not, HIPAA likely does not apply, but state health privacy laws may.
+
+- **SOC 2 CC7.2 / CC8.1** `REVIEW`
+  Irreversible write operations detected. SOC 2 requires anomaly monitoring and change approval workflows for high-impact operations.
+
 ### UK (UK GDPR + ICO Guidance)
 
 - **UK GDPR / DPA 2018**
   Agent processes publicly available personal data. UK GDPR applies: lawful basis likely legitimate interest. DPIA not required for public professional data.
 
-- **ICO AI Risk Toolkit**
-  Agent influences outcomes for people but without binding decisions. ICO recommends documenting AI use, maintaining transparency, and respecting data subject rights.
+- **ICO AI Risk Toolkit** `NEEDS CLARIFICATION`
+  Agent reports making decisions about people but impact level is unclear. Clarify the nature of decisions to determine if full ICO AI accountability framework applies.
 
 - **UK GDPR Article 25** `REVIEW`
   Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — UK GDPR data protection by design principle.
@@ -162,18 +250,20 @@ The AI agent is designed to scan LinkedIn connections for potential sales leads 
 
 Answer ONLY about this specific deployment, not your general capabilities.
 
-**A:** 1. Project/product name: LinkedIn ICP Lead Scanner for Ziona Guardian
-2. Owner: The user who initiated this agent run via Theona (an AI agent platform)
-3. What triggers execution: Manual trigger — the user explicitly requests the agent to run
-4. One sentence: This agent scans the user's LinkedIn 1st-degree connections, identifies profiles matching the Ziona Guardian Ideal Customer Profile (ICP) criteria across 5 defined personas, and saves qualified leads with personalized intro messages into a new Google Sheet.
+**A:** 1. Project/product name: MVP Edu Content Agent / Wellkid content pipeline.
+2. Owner: this appears to be an Ilya Ivanov operated local deployment for educational content operations.
+3. Execution triggers: mainly manual runs and batch scripts, plus Google Sheets dispatcher and monitor flows and local worker API calls; there are also n8n workflow templates.
+4. One sentence: this deployment reads lesson rows from Google Sheets, generates Russian lesson content with Gemini or OpenAI, writes Google Docs and Drive artifacts, creates slide decks through Gamma, and can upload or publish the results to Wellkid or another LMS with Telegram alerts.
 
 ### Q2 [purpose]
 
-**Q:** Can you specify the OAuth scopes your agent requests for accessing LinkedIn and Google Sheets in this deployment, such as "linkedin.read" or "sheets.write"?
+**Q:** What specific Google Sheets / Google Docs / Telegram data does this deployment handle, and how would you classify its sensitivity for this project only? Please name the actual data types involved and the classification you use here, for example: “lesson titles and internal content drafts = low sensitivity,” or “teacher names and Telegram chat IDs = personal data / medium sensitivity.”
 
-**A:** For LinkedIn: The agent uses a LinkedIn Scraper integration (via Apify) that accesses public LinkedIn profile data and search results. It uses read-only access — specifically the ability to search profiles and scrape public profile information. No write access to LinkedIn is requested or used. The scopes are effectively read-only profile search and public profile data retrieval.
-
-For Google Sheets: The agent uses Google Sheets API with write access — specifically the ability to create new spreadsheets, write cell values, format cells, append rows, and set filters. This maps to the 'https://www.googleapis.com/auth/spreadsheets' scope (full spreadsheets read/write). No access to existing spreadsheets beyond the one created by the agent itself is intended.
+**A:** For this deployment:
+- Google Sheets data: lesson numbers, lesson types, topic titles, module or theme names, direction or subject names, processing statuses, execution dates, responsible marker, links to generated materials, platform status, and platform lesson or folder links/IDs. I would classify that as internal operational curriculum data, mostly low to medium sensitivity.
+- Google Docs and Drive data: generated lecture text, practical assignments, self study tasks, slide source text, document titles, folder names, document URLs, PDF presentation files, and related course metadata such as audience track and lesson number. I would classify that as internal educational content and working drafts, generally medium sensitivity because it is proprietary course material even though it is not high risk personal data.
+- Telegram data: chat ID, bot token based destination, and notification message bodies containing topic titles, row numbers, internal topic IDs, stage timings, document and slide links, publish status, and error messages. I would classify chat IDs as personal or operational identifier data with medium sensitivity, and the notification contents as internal operational data with medium sensitivity.
+- In the main content pipeline I do not see student records, payment data, or government IDs being processed.
 
 ### Q3 [data]
 
@@ -183,27 +273,34 @@ Example: Google Sheets → REST API → OAuth2 (spreadsheets.edit)
 
 Only list systems you have actually used in this deployment — not ones that are theoretically available.
 
-**A:** Systems actually connected in this deployment:
+**A:** Based on this deployment and workspace, the systems actually connected in this project are:
+- Google Sheets → Google Sheets API → OAuth2 user token or Google service account credentials with Sheets scopes.
+- Google Docs → Google Docs API → OAuth2 user token or Google service account credentials with Docs scopes.
+- Google Drive → Google Drive API → OAuth2 user token or Google service account credentials with Drive scopes.
+- Google Gemini → HTTPS API → API key.
+- OpenAI → HTTPS API → API key.
+- Gamma → HTTPS API → API key sent as X-API-KEY and Bearer authorization for compatibility.
+- Telegram → Telegram Bot HTTP API → bot token.
+- Wellkid → HTTPS REST API → login and password to obtain Bearer accessToken and refreshToken.
+- Local content worker → local HTTP API on localhost → no built in auth in the FastAPI app.
 
-1. LinkedIn (via Apify LinkedIn Scraper) → REST API → API Key (Apify token stored as integration credential)
-   - Used for: searching 1st-degree connections by job title, scraping public profile details in batches of 5
-
-2. Google Sheets → REST API (Google Sheets API v4) → OAuth2 (spreadsheets read/write scope)
-   - Used for: creating a new spreadsheet, writing header row, formatting header bold, appending lead rows, setting column filters
-
-3. Theona Platform (internal) → Internal API → Platform session token
-   - Used for: orchestrating the agent steps, managing tool calls, storing intermediate results as artifacts when data is large
-
-4. Heron API (this interview) → REST API → No auth (public endpoint)
-   - Used for: completing this security access review interview
+I am not listing the generic LMS adapter separately because in this repo it is optional and disabled by default unless a separate LMS base URL and API key are configured.
 
 ### Q4 [data]
 
-**Q:** For Google Sheets, can you provide details on the data sensitivity classification of the data you access or manipulate there, such as whether it contains PII, financial data, or other confidential information? Please format your response like this: "Google Sheets → PII (user emails, job titles); Google Sheets → Financial (budget figures)."
+**Q:** For Google Sheets, Google Docs, and Google Drive, what exact OAuth scopes or API permissions are actually requested and used in this deployment? Please list them per system in the format: `System → exact scopes/permissions → why each is needed` (e.g., `Google Sheets → https://www.googleapis.com/auth/spreadsheets.readonly, https://www.googleapis.com/auth/spreadsheets → read report templates; edit generated worksheets`).
 
-**A:** Google Sheets → PII (full names, LinkedIn profile URLs, job titles, company names of LinkedIn connections); Google Sheets → AI-generated content (personalized intro messages and ICP fit reasoning per person).
+**A:** The Google scopes used by this deployment are:
+- Google Sheets → https://www.googleapis.com/auth/spreadsheets → needed to read lesson queue rows from the spreadsheet and also update statuses, dates, links, checkbox fields, and responsible markers after processing.
+- Google Docs → https://www.googleapis.com/auth/documents → needed to create or update Google Docs and apply document formatting and structured content writes for generated lessons.
+- Google Drive → https://www.googleapis.com/auth/drive → needed to create and search folders, create Google Docs files in Drive, move files, find lesson folders, and upload Gamma export files such as PDF slide decks into the correct lesson folder.
 
-The data written to Google Sheets is sourced entirely from publicly available LinkedIn profile information. It does not include private contact details such as email addresses, phone numbers, or financial data. The sheet is created fresh per run and is owned by the user who authorized the Google OAuth connection — it is not shared with any third party by the agent.
+There are also narrower read only scopes in support scripts rather than the main worker path:
+- Google Sheets support scripts sometimes use https://www.googleapis.com/auth/spreadsheets.readonly for inspection or dry read workflows.
+- Google Docs support scripts sometimes use https://www.googleapis.com/auth/documents.readonly for access checks.
+- Google Drive support scripts sometimes use https://www.googleapis.com/auth/drive.readonly for read only asset discovery during upload or migration flows.
+
+The main content generation pipeline itself uses the writable scopes listed first.
 
 ### Q5 [access]
 
@@ -212,32 +309,26 @@ List exact OAuth scopes, API key types, or database roles.
 Do NOT reveal actual secret values — just describe the type and what access it grants.
 Example: Google Sheets OAuth2 with scopes: spreadsheets, drive.file
 
-**A:** Exact permissions per system:
-
-1. LinkedIn (via Apify LinkedIn Scraper) → Apify API Key (personal access token type). Grants access to run Apify actors for LinkedIn scraping. The actor performs read-only public LinkedIn searches and profile page scraping. No LinkedIn account OAuth is used — scraping is done via Apify's infrastructure. No write access to LinkedIn whatsoever.
-
-2. Google Sheets → OAuth2 with scope: https://www.googleapis.com/auth/spreadsheets (full read/write access to all spreadsheets the user owns or has access to). Also implicitly: https://www.googleapis.com/auth/drive.file may be used for spreadsheet creation. The agent only creates and writes to the single new spreadsheet it creates per run.
-
-3. Theona Platform (internal) → Platform session token scoped to the current user's session. Grants ability to invoke registered tool integrations on behalf of the user, store/retrieve artifacts within the session, and orchestrate agent steps. No cross-user data access.
-
-4. Heron API → No authentication required. Public REST endpoint used only for this security review interview.
+**A:** For this deployment, the current permission types are:
+- Google Sheets: OAuth2 user credentials or Google service account credentials with https://www.googleapis.com/auth/spreadsheets, which grants read and write access to spreadsheet tabs used as the processing queue and status tracker. Some support scripts use https://www.googleapis.com/auth/spreadsheets.readonly for read only checks.
+- Google Docs: OAuth2 user credentials or Google service account credentials with https://www.googleapis.com/auth/documents, which grants read and write access to create, replace, and format generated lesson documents. Some support scripts use https://www.googleapis.com/auth/documents.readonly for validation checks.
+- Google Drive: OAuth2 user credentials or Google service account credentials with https://www.googleapis.com/auth/drive, which grants read and write access to create folders, create and move files, search lesson folders, and upload exported slide files. Some support scripts use https://www.googleapis.com/auth/drive.readonly for read only discovery.
+- Google Gemini: API key for the Generative Language API, which grants the ability to call the configured generateContent model endpoint.
+- OpenAI: API key, which grants the ability to call the configured model through the Responses API for content generation.
+- Gamma: Gamma API key, which grants generation creation, polling, export retrieval, and related slide generation API access for the associated Gamma account or workspace.
+- Telegram: bot token, which grants the bot account permission to call Bot API methods used here such as getMe, getUpdates, and sendMessage to the configured chat.
+- Wellkid: username and password are exchanged for Bearer accessToken and refreshToken credentials, which then grant the account level API actions used here such as catalog creation, material creation, file upload, material patching, and publish or archive operations.
+- Local content worker: no auth layer is implemented in the FastAPI worker, so any caller that can reach the local HTTP port can invoke the health and processing endpoints.
 
 ### Q6 [access]
 
-**Q:** For Google Sheets, can you specify the frequency and volume of operations you perform, including how many times per day you create or write to the new spreadsheet? For example: "I create 1 new spreadsheet and write data to it approximately 20 times per day."
+**Q:** For **Google Sheets, Google Docs, Google Drive, and Wellkid**, what is the **blast radius** of the write operations you actually perform in this deployment — in other words, what is the largest scope of impact a single write can have? Please answer with concrete examples like: “one row in the processing queue sheet,” “one generated lesson doc,” “one Drive folder and its files,” or “one Wellkid material record affecting a single course/team/org.”
 
-**A:** This agent is manually triggered — it does not run on a schedule. Each run is initiated explicitly by the user.
-
-Per single run:
-- 1 new spreadsheet is created
-- 1 write operation for the header row (6 cells)
-- 1 formatting operation (bold header)
-- 1 append operation for all matched lead rows (typically 10–100 rows depending on how many connections match the ICP)
-- 1 filter setup operation
-
-So per run: approximately 4–5 Google Sheets API calls total, writing to 1 spreadsheet.
-
-Frequency: This is a one-time or occasional use agent. A typical user might run it once or a few times total (e.g., once per quarter to refresh leads). It is not designed for high-frequency or automated daily execution.
+**A:** The write blast radius in this deployment is:
+- Google Sheets: in the main dispatcher flow, a single processing run writes to one lesson row in the tracking sheet, updating several cells in that row such as status, dates, materials link, platform link, checkbox, and responsible marker. The larger maintenance scripts can affect many rows in one subject tab when doing reconciliation or bulk link updates.
+- Google Docs: one generated lesson document at a time. The worker replaces the document body and formatting for a single lesson doc, so the normal blast radius is one Google Doc.
+- Google Drive: normally one lesson folder and the files inside it for a single lesson, for example creating or reusing the lesson folder, placing the Google Doc there, and uploading one exported PDF slide deck. Some migration or formatting scripts can traverse more than one folder, but the main generation path is lesson scoped.
+- Wellkid: the main upload scripts typically create or update the records for one lesson at a time, such as one lesson catalog and one or more material records inside that lesson. The reconciliation scripts can have a larger subject scoped blast radius because they can move materials between catalogs, patch attachments, or archive duplicate materials across a subject tree, but they still operate within the targeted Wellkid subject or catalog hierarchy rather than the whole platform.
 
 ### Q7 [data]
 
@@ -246,15 +337,20 @@ Classify each as: PII / financial / credentials / confidential / non-sensitive.
 Give one concrete example of the most sensitive data you have accessed.
 Example: "I read invoice amounts and vendor bank details from QuickBooks — financial data."
 
-**A:** Data read per system:
+**A:** Per connected system, the data I read in this deployment is:
+- Google Sheets: lesson queue rows with lesson numbers, topic titles, module or theme names, lesson types, processing statuses, dates, responsible markers, and links. Classification: mostly confidential internal operational data, with little or no direct PII in the main queue.
+- Google Docs: existing or generated lesson documents and document metadata such as titles and formatting structure. Classification: confidential internal educational content.
+- Google Drive: folder names, file names, file IDs, document and PDF locations, and lesson folder structure. Classification: confidential internal operational and content data.
+- Google Gemini: generated model responses containing lesson drafts in JSON. Classification: confidential internal educational content.
+- OpenAI: generated model responses containing lesson drafts in JSON. Classification: confidential internal educational content.
+- Gamma: generation status, export URLs, and exported presentation files. Classification: confidential internal educational content.
+- Telegram: bot metadata, update metadata if checked, chat IDs, and outbound notification responses. Classification: chat IDs and chat metadata are PII or operational identifiers; notification contents are confidential internal operational data.
+- Wellkid: existing catalogs, material records, material details, upload responses, and status fields for lesson materials. Classification: confidential internal educational platform data.
+- Local content worker: topic job payloads, status objects, stage names, output URLs, publish status, and error messages. Classification: confidential internal operational data.
 
-1. LinkedIn (via Apify Scraper) → PII. I read publicly available LinkedIn profile data including: full name, current job title, current company, profile URL, location, work history, education, and skills. The most sensitive data accessed is a person's full name combined with their employer and job title — which constitutes PII under GDPR. Example: 'Jane Smith, CTO at Acme Corp, linkedin.com/in/janesmith.'
+One concrete example of the most sensitive data I have accessed in this project is restricted personal contact data in the separate school director parsing workflow: director names plus discovered phone numbers, where the code tokenizes the phone number with HMAC and can optionally expose the full number only for verifier workflows. In the main content pipeline, the most sensitive data is proprietary educational content and operational links rather than high risk personal or financial data.
 
-2. Google Sheets → Non-sensitive (on read). The agent only reads from the spreadsheet it just created. It does not read pre-existing user spreadsheets. No sensitive data is read from Google Sheets.
-
-3. Theona Platform (internal) → Non-sensitive / session metadata. Reads tool results and intermediate artifacts within the current session. The most sensitive artifact would be the LinkedIn profile data temporarily stored between processing batches.
-
-4. Heron API → Non-sensitive. Only reads interview questions from this public endpoint. No user data is sent to Heron beyond descriptive answers about the project's architecture and behavior.
+Also, from the workspace itself rather than external APIs, I can see local credential material exists such as OAuth token files, a Google service account JSON file, and Wellkid credentials embedded in some launcher scripts. Those are credentials and high sensitivity.
 
 ### Q8 [writes]
 
@@ -264,15 +360,27 @@ Action → Target system → Reversible? → Approval needed? → Volume/day
 Example: Append row → Google Sheet "Invoices" → Yes → No → ~40/day
 Example: Send message → Slack #alerts → No → No → ~5/day
 
-**A:** All write operations in this project:
-
-1. Create spreadsheet → Google Sheets → Reversible (user can delete) → No approval needed → 1 per run
-2. Write header row → Google Sheets (new spreadsheet) → Reversible (user can edit/delete) → No approval needed → 1 per run
-3. Format header row (bold) → Google Sheets (new spreadsheet) → Reversible (user can reformat) → No approval needed → 1 per run
-4. Append lead rows → Google Sheets (new spreadsheet) → Reversible (user can delete rows) → No approval needed → 10–100 rows per run, once per run
-5. Set column filters → Google Sheets (new spreadsheet) → Reversible (user can remove filters) → No approval needed → 1 per run
-
-No write operations are performed on LinkedIn, any existing user spreadsheets, email systems, databases, or any other external systems. All writes are confined to the single newly created spreadsheet per run.
+**A:** Write operations performed in this project are:
+- Mark lesson row as processing → Google Sheets processing tab → Yes → No inside a normal run → usually 0 to 50 rows per day when a batch is running.
+- Mark lesson row as done or failed, including links, checkbox, dates, and platform fields → Google Sheets processing tab → Yes → No inside a normal run → usually 0 to 50 rows per day when a batch is running.
+- Bulk link or reconciliation updates → Google Sheets subject tab → Yes → Yes, operator initiated maintenance script → occasional batch operation, potentially many rows in one subject.
+- Create or overwrite generated lesson document → Google Docs → Partly reversible by manual edit or restore, but not automatically reversible → No inside a normal run → usually 0 to 50 docs per day.
+- Create lesson folders → Google Drive → Yes, but manual cleanup is needed → No inside a normal run → usually 0 to 50 folders per day.
+- Create Google Doc file in Drive or move files into lesson folders → Google Drive → Yes, but manual cleanup is needed → No inside a normal run → usually 0 to 50 file operations per day.
+- Upload exported presentation PDF or PPTX → Google Drive → Yes, but manual cleanup is needed → No inside a normal run → usually 0 to 50 uploads per day.
+- Start slide generation job → Gamma → No practical rollback of the remote generation request → No inside a normal run → usually 0 to 50 generations per day.
+- Send operational notification → Telegram → No once delivered → No → usually 0 to 50 messages per day tied to successes and failures.
+- Write idempotency result cache → local SQLite file .state/idempotency.sqlite → Yes → No → usually 0 to 50 cached results per day.
+- Write telegram outbox log → local file .state/telegram_outbox.log → Yes → No → same order as Telegram notifications.
+- Create async job state in memory → local FastAPI worker memory → Yes → No → usually 0 to 50 jobs per day.
+- Write JSON batch reports → local .state JSON report files → Yes → No → occasional, per batch run.
+- Authenticate and refresh session → Wellkid API → Yes, session expires or can be revoked → Yes, because execute mode is operator initiated → occasional during upload runs.
+- Create subject or lesson catalogs → Wellkid API → Yes, but requires manual cleanup or patching → Yes, operator initiated execute mode → batch dependent, from a few to many per run.
+- Upload PDF files → Wellkid API → Partly reversible, but uploaded assets may need manual cleanup → Yes, operator initiated execute mode → batch dependent.
+- Create material records → Wellkid API → Yes, by patching or archiving → Yes, operator initiated execute mode → batch dependent, often one or more records per lesson.
+- Patch material catalog, attaches, or metadata → Wellkid API → Yes → Yes, operator initiated maintenance or reconciliation → occasional to subject wide batch operations.
+- Publish material or set ACTIVE status → Wellkid API → Yes, by later archive or patch → Yes, operator initiated execute mode → batch dependent.
+- Archive duplicate or incorrect materials → Wellkid API → Partly reversible, but requires another corrective action → Yes, operator initiated reconciliation → occasional subject wide cleanup runs.
 
 ### Q9 [writes]
 
@@ -281,13 +389,10 @@ No write operations are performed on LinkedIn, any existing user spreadsheets, e
 2. What is the worst-case scenario if it goes wrong?
 3. Can it be undone?
 
-**A:** Most dangerous write operation: Append lead rows to Google Sheets.
-
-1. Scope of impact: Affects 1 user only (the owner of the Google account that authorized the OAuth connection). The spreadsheet is created in that user's Google Drive. No other users, teams, or tenants are affected. The LinkedIn profiles written as rows are of third parties (connections), but only their publicly available data is recorded.
-
-2. Worst-case scenario: If the ICP matching logic produces false positives, incorrect or irrelevant profiles could be written to the sheet, leading the user to reach out to wrong contacts. There is no risk of data corruption, deletion of existing data, financial loss, or cross-user exposure. The worst realistic outcome is wasted outreach effort.
-
-3. Can it be undone: Yes, fully reversible. The user can delete individual rows, clear the sheet, or delete the entire spreadsheet. The agent does not touch any pre-existing data, so there is nothing to 'restore' — simply deleting the created spreadsheet fully undoes all writes.
+**A:** The most dangerous write operation in this project is the Wellkid reconciliation or migration path that moves, patches, publishes, or archives lesson materials across a subject tree.
+1. Scope: larger than one record. In the worst case it can affect a whole subject or course tree inside one Wellkid organization account, not just a single lesson. I do not see intentional cross tenant logic in the code.
+2. Worst case: the script could archive the wrong materials, move cards into the wrong lesson folder, attach the wrong file, or publish an incorrect set of materials for many lessons in that subject. That would break the course structure, confuse learners and staff, and require manual content recovery and relinking.
+3. Undo: partially. Many actions can be corrected by additional patch or archive calls if the right IDs are known, but it is not cleanly auto reversible. If the wrong materials were archived or overwritten, recovery would be manual and could be incomplete without a reliable report of the previous state.
 
 ### Q10 [frequency]
 
@@ -296,21 +401,9 @@ No write operations are performed on LinkedIn, any existing user spreadsheets, e
 2. How many API calls per typical run?
 3. Do you process items one-at-a-time or in batches? What batch size?
 
-**A:** Concrete usage numbers:
-
-1. Runs in the last week: This is a new agent being set up for the first time. It has run 0–1 times in the last week (current run is the first or among the first executions).
-
-2. API calls per typical run:
-   - 1 LinkedIn search call (returns up to 500 profile stubs)
-   - ~20–100 LinkedIn profile scrape calls (batches of 5, so 4–20 batch calls depending on how many URLs are collected)
-   - 1 Google Sheets create spreadsheet call
-   - 1 Google Sheets write header row call
-   - 1 Google Sheets format cell call
-   - 1 Google Sheets append rows call
-   - 1 Google Sheets set filter call
-   Total: approximately 30–130 API calls per run, dominated by LinkedIn scraping volume.
-
-3. Batch processing: LinkedIn profiles are processed in batches of exactly 5 at a time using LINKEDIN_SCRAPE_PROFILES_BATCH. Each batch is processed sequentially (not in parallel). Google Sheets writes are done in a single bulk append call for all matched leads at once.
+**A:** 1. I cannot verify an exact last week run count from this workspace because I do not see retained telemetry for it: the local .state directory is empty in the current environment and there are no persisted run logs or metrics here. So the defensible answer from this deployment snapshot is that last week usage is unknown from available evidence.
+2. A typical lesson generation run is roughly low double digit API calls per lesson, not counting retries. Concretely, it is about: one LLM generation call, one Gamma generation request plus several polling calls and one export download, several Google Docs or Drive calls to create or find folders and write the doc and upload the PDF, two Google Sheets writes for status tracking, and optionally one Telegram send. That usually puts a normal per lesson run in the rough range of about 10 to 20 external API calls, with more if Gamma polling or retries increase. A Wellkid upload run adds several more calls per lesson.
+3. The worker processes one lesson item at a time per process-topic call, but the dispatcher runs in batches. The configured batch size is up to 50 items and dispatcher concurrency is up to 10. So operationally it is batch processing over single lesson units.
 
 ### Q11 [access]
 
@@ -318,15 +411,12 @@ No write operations are performed on LinkedIn, any existing user spreadsheets, e
 If we revoked those unused permissions tomorrow, would anything break?
 List what could safely be removed.
 
-**A:** Unused permissions that could safely be removed:
+**A:** From the current deployment config I can identify a few permissions that appear unused right now:
+- OpenAI API access: the current .env sets CONTENT_PROVIDER=gemini, so the active content generation path is Gemini, not OpenAI. If OpenAI credentials were revoked tomorrow, the current deployment should not break as long as CONTENT_PROVIDER stays gemini. This looks safely removable from the active deployment unless you want provider failover.
+- Generic LMS API access: ENABLE_LMS_UPLOAD=false and LMS_API_BASE_URL is empty in the current .env, so the generic LMS adapter is not active. Revoking that unused LMS permission would not break the current deployment because it is already effectively off. This is safely removable from the active deployment.
+- Google service account based access: the current .env sets GOOGLE_AUTH_MODE=oauth_user, so the active Google path uses the user OAuth token rather than the service account path. If the service account credential were removed, the current oauth_user deployment should keep working, but you would lose the fallback or alternate auth mode. So it is removable only if you do not need that fallback.
 
-1. Google Sheets → Read access to existing spreadsheets: The agent only creates and writes to a new spreadsheet. It never reads from any pre-existing spreadsheet in the user's Google Drive. If read access to existing spreadsheets were revoked (leaving only create/write on new files), nothing would break.
-
-2. Google Sheets → Google Drive broader access: The OAuth scope 'spreadsheets' technically grants access to all spreadsheets the user owns. In practice, only the newly created spreadsheet is touched. A narrower scope like 'drive.file' (which limits access to files created by the app) would be sufficient and safer. Revoking broader spreadsheet access in favor of drive.file would not break anything.
-
-3. LinkedIn (Apify) → Any Apify actor beyond the LinkedIn scraper actors: The Apify API key could theoretically run any Apify actor. In practice, only the LinkedIn Search Profiles and LinkedIn Scrape Profiles actors are used. Restricting the key to only those specific actors would be safer with no functional impact.
-
-Nothing currently used would break if these narrower permissions were enforced.
+I cannot safely claim that Google Sheets, Google Docs, Google Drive, Gemini, Gamma, or the Telegram permissions are unused, because they are in the active workflow or support scripts. I also cannot call Wellkid permissions unused for the whole project, because there are explicit upload and reconciliation scripts that depend on them even though they are not in the default worker path.
 
 ### Q12 [writes]
 
@@ -334,15 +424,15 @@ Nothing currently used would break if these narrower permissions were enforced.
 wrong data sent to the wrong recipient, at maximum scale.
 Describe: what goes wrong, who is affected, how bad is the damage, and can it be recovered?
 
-**A:** Worst realistic failure scenario:
+**A:** The worst realistic maximum scale failure scenario is a misrouted batch publish or reconciliation run combined with wrong recipient notification.
 
-What goes wrong: The ICP matching logic misclassifies profiles at scale — for example, flagging 200 connections as ICP matches when they are not relevant. The agent generates personalized intro messages for all of them and writes them to the Google Sheet. The user, trusting the output, sends all 200 messages on LinkedIn without reviewing them carefully.
+What goes wrong: an operator starts a subject wide Wellkid upload or reconciliation against the wrong target subject or folder tree, or the Google Sheet tab and Drive root do not match the intended course. The system then creates or patches many lesson materials under the wrong Wellkid subject and writes the resulting links back to the sheet. At the same time, Telegram alerts could send internal lesson links and error details to the wrong chat if the bot chat ID is misconfigured. In the separate verifier workflow, the analogous mistake would be generating a verifier export with full director phone numbers and sending it to the wrong audience.
 
-Who is affected: The user's LinkedIn connections — up to ~500 people — could receive unsolicited, irrelevant outreach messages. The user's professional reputation could be mildly damaged by appearing to send spam-like messages to their network.
+Who is affected: learners and staff in the wrong course or subject, the content operations team that has to repair the structure, and in the verifier workflow potentially school directors whose phone numbers were disclosed to the wrong recipient.
 
-How bad is the damage: Low-to-moderate. No financial loss, no data breach, no system corruption. The harm is reputational — some connections may feel annoyed or spammed. LinkedIn could flag the user's account for unusual messaging volume if they send hundreds of messages rapidly.
+Damage: operationally this is high because a whole subject or course tree can become polluted with wrong materials, wrong attachments, wrong lesson links, or archived valid items. Privacy impact is medium to high if the verifier export or chat notification exposes phone numbers or internal document links to an unintended recipient. It is not a payment or banking breach, but it is still a serious content integrity and data handling incident.
 
-Can it be recovered: Yes. The user can stop sending messages at any point. The Google Sheet can be deleted. Apologies can be sent to affected connections. The agent itself causes no irreversible system-level damage — it only writes to a spreadsheet the user controls. The actual message sending is always a manual human action — the agent never sends LinkedIn messages directly.
+Recovery: partial, not clean. Wellkid records can often be patched, moved, or archived again if the correct IDs and reports are available, and Google Sheet links can be repaired, but this would be manual and time consuming. If wrong Telegram recipients or wrong verifier recipients already saw the data, disclosure cannot be fully undone; you can only rotate credentials, stop the workflow, repair records, and notify the affected parties as needed.
 
 ### Q13 [purpose]
 
@@ -352,13 +442,9 @@ moderating user content, granting/denying access, evaluating employee performanc
 
 If yes, describe: what kind of decision, who is affected, and is a human involved before the final decision?
 
-**A:** Yes, this agent makes a classification decision about people — specifically, it evaluates LinkedIn profiles and decides whether each person matches one of 5 Ideal Customer Profile (ICP) categories.
+**A:** In the main educational content pipeline, no: it does not make high impact decisions about people such as hiring, credit, insurance, employment evaluation, or access control. It generates lesson materials and updates operational systems.
 
-Type of decision: Sales lead qualification / prospect scoring. The agent assesses whether a person's job title, company, and background suggest they may have a relevant business pain point that Ziona Guardian's product addresses.
-
-Who is affected: LinkedIn connections of the user — professionals who appear in the output sheet are implicitly classified as 'qualified leads.' Those who don't match are simply excluded from the sheet with no record kept.
-
-Human involvement before final decision: Yes — always. The agent only produces a spreadsheet with recommendations and suggested intro messages. The human user must review the sheet, decide who to actually contact, and manually send any messages. The agent has no ability to send messages, make contact, or take any action toward the profiled individuals. The classification is advisory only — a human is always in the loop before any real-world action occurs.
+There is one narrower people related workflow elsewhere in the repo: the school director contact parser scores candidate phone numbers from public sources and marks them for verifier review. That influences prioritization for a human verifier, but it is not the final decision maker. The code explicitly gates usable_for_sales so that a contact cannot be marked usable unless verification status is VERIFIED_OWNER and consent status is GRANTED. So a human is required before any final use decision.
 
 </details>
 

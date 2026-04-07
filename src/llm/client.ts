@@ -118,14 +118,34 @@ const DEFAULT_MODELS: Record<string, string> = {
  * If provider is not explicitly set, auto-detects from API key format.
  */
 export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
-  const apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
+  let apiKey = config.apiKey ?? process.env.HERON_LLM_API_KEY;
 
   if (!apiKey) {
-    throw new Error(
-      `No API key found. Use one of:\n` +
-      `  1. --llm-key <key>\n` +
-      `  2. HERON_LLM_API_KEY env var`,
-    );
+    // Interactive prompt for API key
+    if (process.stdin.isTTY) {
+      const { createInterface } = await import('node:readline');
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      apiKey = await new Promise<string>(resolve => {
+        console.error('');
+        console.error('  \x1b[1mNo API key found.\x1b[0m');
+        console.error('  Heron needs an LLM key for transcript analysis.');
+        console.error('  Supports: Anthropic (sk-ant-...), OpenAI (sk-...), Gemini (AIza...)');
+        console.error('');
+        rl.question('  API key: ', (answer) => {
+          rl.close();
+          resolve(answer.trim());
+        });
+      });
+      if (!apiKey) {
+        throw new Error('No API key provided.');
+      }
+    } else {
+      throw new Error(
+        `No API key found. Use one of:\n` +
+        `  1. --llm-key <key>\n` +
+        `  2. HERON_LLM_API_KEY env var`,
+      );
+    }
   }
 
   // Resolve provider: explicit env var > explicit config > auto-detect from key
