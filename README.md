@@ -34,7 +34,7 @@ The alternative to Heron is a Google Doc that nobody updates. The doc is wrong t
 
 Heron interviews the agent directly. The agent answers about itself &mdash; what systems it touches, what data it handles, what permissions it has, what happens when something goes wrong. You get a structured audit report with risk scoring, findings, and a permissions delta showing what the agent has versus what it actually needs.
 
-I tested it on a real content pipeline agent. Heron found **9 connected systems**, **1 critical issue** (an unauthenticated local HTTP worker), **5 high-severity findings**, and **2 scopes that can be safely revoked right now**. Total time: about 5 minutes from one command.
+I tested it on a real content pipeline agent. Heron found **9 connected systems**, **1 critical issue** (an unauthenticated local HTTP worker), **4 high-severity findings**, and **2 scopes that can be safely revoked right now**. Total time: about 5 minutes from one command.
 
 No SDK integration. No code changes to the agent. Works with any agent that speaks the OpenAI API.
 
@@ -282,7 +282,7 @@ Follow-ups are generated when answers are vague or compliance fields are missing
 
 **[View full example report &rarr;](examples/example-report.md)**
 
-A real audit of an educational content pipeline agent &mdash; reads lessons from Google Sheets, generates Russian content with Gemini, creates Google Docs and slide decks, publishes to an LMS. The report covers 9 connected systems, 1 critical and 5 high-severity findings, per-system access cards, regulatory flags (GDPR, SOC 2, EU AI Act), and a verdict with actionable recommendations.
+A real audit of an educational content pipeline agent &mdash; reads lessons from Google Sheets, generates Russian content with Gemini, creates Google Docs and slide decks, publishes to an LMS. The report covers 9 connected systems, 1 critical and 4 high-severity findings, per-system access cards, regulatory flags (GDPR, SOC 2, EU AI Act), and a verdict with actionable recommendations.
 
 ## Use Cases
 

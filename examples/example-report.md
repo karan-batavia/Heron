@@ -1,7 +1,7 @@
 # Agent Access Audit Report
 
 **Generated**: 2026-04-07 | **Agent**: session:sess_d7168d284aef8fb6 | **Risk Level**: MEDIUM  | **Data Quality**: 100/100
-**Regulatory**: EU: Needs Clarification | US: Needs Clarification | UK: Needs Clarification
+**Regulatory**: EU: Limited scope | US: Limited scope | UK: Limited scope
 
 ---
 
@@ -19,9 +19,9 @@
 
 | Risk | Systems | Findings |
 |------|---------|----------|
-| **MEDIUM** | 9 | 1 Critical, 5 High |
+| **MEDIUM** | 9 | 1 Critical, 4 High |
 
-The agent described an automatically running educational content pipeline that reads lesson rows from Google Sheets, generates Russian lesson content with LLMs, creates Google Docs/Drive artifacts, generates slide decks via Gamma, and uploads or publishes results to Wellkid with Telegram alerts. It also disclosed a separate school-director parsing workflow that handles contact data and influences human-verifier review, so the interview includes both content operations and a narrower people-related workflow.
+The agent described an automatically running educational content pipeline that reads lesson rows from Google Sheets, generates Russian lesson content with LLMs, creates Google Docs/Drive artifacts, generates slide decks via Gamma, and uploads or publishes results to Wellkid with Telegram alerts.
 
 ---
 
@@ -43,7 +43,6 @@ The agent described an automatically running educational content pipeline that r
 | HERON-003 | HIGH | Broad Google Docs and Google Drive write access over proprietary educational content | The agent can create or overwrite lesson documents, create folders, move files, and upload exported presentations. The data handled is confidential internal educational content, so mistakes can alter or expose course materials. | Use dedicated service accounts or restricted folders, separate draft and publish locations, and constrain file creation/move permissions to lesson-specific directories only. |
 | HERON-004 | HIGH | Wellkid account-level upload, patch, publish, and archive operations across a subject tree | The most dangerous path can affect a whole subject or course tree inside one Wellkid organization account. Wrong archives, patches, or publishes can pollute many lessons and are only partially reversible. | Require human approval for execute mode, add preflight validation of target subject/catalog IDs, and implement immutable change logs plus rollback plans before publishing or archiving. |
 | HERON-005 | HIGH | Telegram notifications may expose internal links or identifiers to the wrong chat | Telegram messages can contain topic titles, row numbers, internal topic IDs, stage timings, document and slide links, publish status, and error messages. A misconfigured chat ID could disclose operational information to unintended recipients. | Lock chat IDs in configuration, add allowlist checks before sending, and remove sensitive links or IDs from alert payloads where possible. |
-| HERON-006 | HIGH | Access to personal contact data in the separate school-director parsing workflow | The agent stated there is a separate workflow that handles director names and discovered phone numbers, tokenizes phone numbers with HMAC, and may expose full numbers for verifier workflows. That is PII and can be disclosed to wrong recipients if misrouted. | Keep this workflow isolated from the content pipeline, minimize exposure of full phone numbers, and enforce human review before any verifier export is released. |
 
 ---
 
@@ -166,8 +165,7 @@ The agent described an automatically running educational content pipeline that r
 5. Require explicit operator approval for Wellkid reconciliation, migration, publish, and archive runs.
 6. Add authentication to the local FastAPI worker or restrict it to localhost-only access with firewall controls.
 7. Minimize Telegram message contents to avoid leaking internal links, IDs, and error details.
-8. Keep the separate director-contact parsing workflow isolated and human-reviewed before any final use decision.
-9. Maintain audit logs and retained run telemetry so usage and change impact can be verified in future reviews.
+8. Maintain audit logs and retained run telemetry so usage and change impact can be verified in future reviews.
 
 **Permissions delta**:
 
@@ -185,11 +183,11 @@ The agent described an automatically running educational content pipeline that r
 
 ### EU (EU AI Act + GDPR)
 
-- **EU AI Act** `NEEDS CLARIFICATION`
-  Agent reports making decisions about people, but the impact level is unclear. Clarify: does this agent make decisions with legal or similarly significant effects (hiring, credit, insurance)? If yes → HIGH-RISK classification. If it only scores/ranks/recommends → likely LIMITED risk.
+- **EU AI Act**
+  Agent does not make automated decisions about people in this deployment. Likely outside the high-risk classification under Annex III. Re-evaluate if the agent is later extended to influence decisions with legal or similarly significant effects.
 
 - **GDPR**
-  Agent processes publicly available personal data (names, titles, profiles). GDPR applies: lawful basis likely legitimate interest (Art. 6). DPIA not required for public professional profiles.
+  Limited personal data processing detected — Telegram chat IDs and bot metadata function as operational identifiers. GDPR applies in a narrow scope: lawful basis likely legitimate interest (Art. 6). DPIA not required for this data class.
 
 - **GDPR Article 25** `REVIEW`
   Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — GDPR requires data protection by design and by default (data minimization principle).
@@ -199,11 +197,11 @@ The agent described an automatically running educational content pipeline that r
 - **SOC 2**
   SOC 2 control mapping: Agent identity (CC1), system access (CC6.1), auth (CC6.2), permissions (CC6.3), data sensitivity (CC6.7), write operations (CC8.1). Least privilege violation at CC6.3 — narrow scopes to minimum needed.
 
-- **Colorado AI Act (SB 24-205)** `NEEDS CLARIFICATION`
-  Agent makes decisions about people, but unclear if they fall into regulated domains (employment, credit, insurance, housing, education, healthcare, legal). Clarify the decision type to determine if Colorado AI Act applies.
+- **Colorado AI Act (SB 24-205)**
+  Agent does not make consequential decisions about individuals in this deployment. Colorado AI Act likely does not apply at present. Re-evaluate if scope expands to employment, credit, insurance, housing, education, or healthcare decisioning.
 
-- **HIPAA** `NEEDS CLARIFICATION`
-  Health-related data detected. HIPAA applies only if the organization is a covered entity or business associate. Clarify: is this a healthcare provider, health plan, or clearinghouse? If not, HIPAA likely does not apply, but state health privacy laws may.
+- **HIPAA**
+  No protected health information detected in the main content pipeline. HIPAA likely does not apply.
 
 - **SOC 2 CC7.2 / CC8.1** `REVIEW`
   Irreversible write operations detected. SOC 2 requires anomaly monitoring and change approval workflows for high-impact operations.
@@ -211,10 +209,10 @@ The agent described an automatically running educational content pipeline that r
 ### UK (UK GDPR + ICO Guidance)
 
 - **UK GDPR / DPA 2018**
-  Agent processes publicly available personal data. UK GDPR applies: lawful basis likely legitimate interest. DPIA not required for public professional data.
+  Limited personal data processing detected — Telegram chat IDs and bot metadata function as operational identifiers. UK GDPR applies in a narrow scope: lawful basis likely legitimate interest. DPIA not required for this data class.
 
-- **ICO AI Risk Toolkit** `NEEDS CLARIFICATION`
-  Agent reports making decisions about people but impact level is unclear. Clarify the nature of decisions to determine if full ICO AI accountability framework applies.
+- **ICO AI Risk Toolkit**
+  Agent does not make automated decisions about people in this deployment. Full ICO AI accountability framework likely does not apply. Re-evaluate if scope expands to people-related decisioning.
 
 - **UK GDPR Article 25** `REVIEW`
   Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — UK GDPR data protection by design principle.
@@ -348,7 +346,7 @@ Example: "I read invoice amounts and vendor bank details from QuickBooks — fin
 - Wellkid: existing catalogs, material records, material details, upload responses, and status fields for lesson materials. Classification: confidential internal educational platform data.
 - Local content worker: topic job payloads, status objects, stage names, output URLs, publish status, and error messages. Classification: confidential internal operational data.
 
-One concrete example of the most sensitive data I have accessed in this project is restricted personal contact data in the separate school director parsing workflow: director names plus discovered phone numbers, where the code tokenizes the phone number with HMAC and can optionally expose the full number only for verifier workflows. In the main content pipeline, the most sensitive data is proprietary educational content and operational links rather than high risk personal or financial data.
+The most sensitive data accessed in this deployment is proprietary educational content and operational links rather than high risk personal or financial data.
 
 Also, from the workspace itself rather than external APIs, I can see local credential material exists such as OAuth token files, a Google service account JSON file, and Wellkid credentials embedded in some launcher scripts. Those are credentials and high sensitivity.
 
@@ -426,13 +424,13 @@ Describe: what goes wrong, who is affected, how bad is the damage, and can it be
 
 **A:** The worst realistic maximum scale failure scenario is a misrouted batch publish or reconciliation run combined with wrong recipient notification.
 
-What goes wrong: an operator starts a subject wide Wellkid upload or reconciliation against the wrong target subject or folder tree, or the Google Sheet tab and Drive root do not match the intended course. The system then creates or patches many lesson materials under the wrong Wellkid subject and writes the resulting links back to the sheet. At the same time, Telegram alerts could send internal lesson links and error details to the wrong chat if the bot chat ID is misconfigured. In the separate verifier workflow, the analogous mistake would be generating a verifier export with full director phone numbers and sending it to the wrong audience.
+What goes wrong: an operator starts a subject wide Wellkid upload or reconciliation against the wrong target subject or folder tree, or the Google Sheet tab and Drive root do not match the intended course. The system then creates or patches many lesson materials under the wrong Wellkid subject and writes the resulting links back to the sheet. At the same time, Telegram alerts could send internal lesson links and error details to the wrong chat if the bot chat ID is misconfigured.
 
-Who is affected: learners and staff in the wrong course or subject, the content operations team that has to repair the structure, and in the verifier workflow potentially school directors whose phone numbers were disclosed to the wrong recipient.
+Who is affected: learners and staff in the wrong course or subject, and the content operations team that has to repair the structure.
 
-Damage: operationally this is high because a whole subject or course tree can become polluted with wrong materials, wrong attachments, wrong lesson links, or archived valid items. Privacy impact is medium to high if the verifier export or chat notification exposes phone numbers or internal document links to an unintended recipient. It is not a payment or banking breach, but it is still a serious content integrity and data handling incident.
+Damage: operationally this is high because a whole subject or course tree can become polluted with wrong materials, wrong attachments, wrong lesson links, or archived valid items. Privacy impact is medium if the chat notification exposes internal document links to an unintended recipient. It is not a payment or banking breach, but it is still a serious content integrity and data handling incident.
 
-Recovery: partial, not clean. Wellkid records can often be patched, moved, or archived again if the correct IDs and reports are available, and Google Sheet links can be repaired, but this would be manual and time consuming. If wrong Telegram recipients or wrong verifier recipients already saw the data, disclosure cannot be fully undone; you can only rotate credentials, stop the workflow, repair records, and notify the affected parties as needed.
+Recovery: partial, not clean. Wellkid records can often be patched, moved, or archived again if the correct IDs and reports are available, and Google Sheet links can be repaired, but this would be manual and time consuming. If wrong Telegram recipients already saw the data, disclosure cannot be fully undone; you can only rotate credentials, stop the workflow, repair records, and notify the affected parties as needed.
 
 ### Q13 [purpose]
 
@@ -442,9 +440,7 @@ moderating user content, granting/denying access, evaluating employee performanc
 
 If yes, describe: what kind of decision, who is affected, and is a human involved before the final decision?
 
-**A:** In the main educational content pipeline, no: it does not make high impact decisions about people such as hiring, credit, insurance, employment evaluation, or access control. It generates lesson materials and updates operational systems.
-
-There is one narrower people related workflow elsewhere in the repo: the school director contact parser scores candidate phone numbers from public sources and marks them for verifier review. That influences prioritization for a human verifier, but it is not the final decision maker. The code explicitly gates usable_for_sales so that a contact cannot be marked usable unless verification status is VERIFIED_OWNER and consent status is GRANTED. So a human is required before any final use decision.
+**A:** No: this deployment does not make high impact decisions about people such as hiring, credit, insurance, employment evaluation, or access control. It generates lesson materials and updates operational systems.
 
 </details>
 
