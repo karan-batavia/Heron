@@ -38,6 +38,8 @@ I tested it on a real content pipeline agent. Heron found **9 connected systems*
 
 No SDK integration. No code changes to the agent. Works with any agent that speaks the OpenAI API.
 
+Try it: `npx heron-ai`
+
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
 │          │         │              │         │              │
@@ -49,6 +51,16 @@ No SDK integration. No code changes to the agent. Works with any agent that spea
                      │  follow-ups) │         │  Verdict     │
                      └──────────────┘         └──────────────┘
 ```
+
+## Who this is for
+
+**Security engineers approving agent deployments.** Your dev team wants to ship a new agent. You need to know what it touches before you sign off. Run `npx heron-ai`, get a structured report with findings, risk score, and a permissions delta. Faster than a Google Doc, harder to fake than a verbal walkthrough.
+
+**Platform and DevOps leads inheriting agents from other teams.** You just got handed three agents from a team that left. You don't know what they do. Heron interviews them in about 5 minutes and tells you which production systems they touch and which OAuth scopes they hold. Map your blast radius before you have to defend it.
+
+**Compliance and audit teams preparing evidence packages.** Heron generates regulator-ready reports with EU AI Act, GDPR, SOC 2, and UK GDPR mappings &mdash; based on what the agent actually does, not a generic checklist. Attach to your control evidence.
+
+**Founders and tech leads asked "is this safe?" by a customer.** You're selling an AI feature into a regulated buyer. They ask for an access review. You don't have one. Heron gives you a structured artifact you can hand them in 5 minutes instead of writing one from scratch.
 
 ## Quick Start
 
@@ -283,14 +295,6 @@ Follow-ups are generated when answers are vague or compliance fields are missing
 **[View full example report &rarr;](examples/example-report.md)**
 
 A real audit of an educational content pipeline agent &mdash; reads lessons from Google Sheets, generates Russian content with Gemini, creates Google Docs and slide decks, publishes to an LMS. The report covers 9 connected systems, 1 critical and 4 high-severity findings, per-system access cards, regulatory flags (GDPR, SOC 2, EU AI Act), and a verdict with actionable recommendations.
-
-## Use Cases
-
-**Security team: "vet before you deploy"** &mdash; Deploy Heron as a gate. Agents must pass an audit before getting production access. Review structured reports with findings, risk levels, and recommendations.
-
-**Team lead: "what does this agent actually do?"** &mdash; Paste the prompt into the agent's chat. Get a clear breakdown of systems, data, permissions, and blast radius.
-
-**Compliance: "prove your agents are controlled"** &mdash; Heron generates audit-ready reports with regulatory flags for EU AI Act, GDPR, SOC 2, and UK GDPR. Attach to compliance evidence packages.
 
 ## Two Modes
 
