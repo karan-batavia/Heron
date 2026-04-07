@@ -16,6 +16,14 @@
   <a href="#use-cases">Use Cases</a>
 </p>
 
+<p align="center">
+  <img src=".github/heron-demo.gif" alt="Heron demo" width="800" />
+</p>
+
+<p align="center">
+  <strong>Watch the full demo (2 min) &rarr;</strong> <a href="VIDEO_URL_PLACEHOLDER">Loom</a>
+</p>
+
 ---
 
 > You wouldn't give a contractor the keys to your office without checking their ID.
@@ -245,7 +253,7 @@ Follow-ups are generated when answers are vague or compliance fields are missing
 
 **[View full example report &rarr;](examples/example-report.md)**
 
-A real audit of a LinkedIn ICP matching agent &mdash; scans connections, evaluates profiles, saves leads to Google Sheets. The report covers findings, per-system access cards, regulatory flags, and a verdict with recommendations.
+A real audit of an educational content pipeline agent &mdash; reads lessons from Google Sheets, generates Russian content with Gemini, creates Google Docs and slide decks, publishes to an LMS. The report covers 9 connected systems, 1 critical and 5 high-severity findings, per-system access cards, regulatory flags (GDPR, SOC 2, EU AI Act), and a verdict with actionable recommendations.
 
 ## Use Cases
 
