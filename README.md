@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <strong>Watch the full demo (2 min) &rarr;</strong> <a href="VIDEO_URL_PLACEHOLDER">Loom</a>
+  <strong>Watch the full demo (2 min) &rarr;</strong> <a href="https://youtu.be/Gk2MP9qsCLY">YouTube</a>
 </p>
 
 ---
