@@ -75,7 +75,16 @@ if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
   exit 0
 fi
 
-# Versions differ — upgrade available
-RESULT="UPGRADE_AVAILABLE $LOCAL_VERSION $REMOTE_VERSION"
-echo "$RESULT" > "$CACHE_FILE"
-echo "$RESULT"
+# Only report if remote is actually newer (simple lexicographic semver compare)
+version_gt() {
+  [ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ] && [ "$1" != "$2" ]
+}
+
+if version_gt "$REMOTE_VERSION" "$LOCAL_VERSION"; then
+  RESULT="UPGRADE_AVAILABLE $LOCAL_VERSION $REMOTE_VERSION"
+  echo "$RESULT" > "$CACHE_FILE"
+  echo "$RESULT"
+else
+  # Remote is older or equal (CDN cache lag) — treat as up to date
+  echo "UP_TO_DATE" > "$CACHE_FILE"
+fi
