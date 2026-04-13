@@ -7,8 +7,19 @@ import * as logger from '../util/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function findSkillSource(): string {
+  // Walk up from __dirname until we find skills/heron-audit/SKILL.md
+  let dir = __dirname;
+  for (let i = 0; i < 5; i++) {
+    const candidate = join(dir, 'skills', 'heron-audit');
+    if (existsSync(join(candidate, 'SKILL.md'))) return candidate;
+    dir = dirname(dir);
+  }
+  return join(__dirname, '..', '..', '..', 'skills', 'heron-audit');
+}
+
 export async function installSkill(): Promise<void> {
-  const skillSource = join(__dirname, '..', '..', 'skills', 'heron-audit');
+  const skillSource = findSkillSource();
   const skillTarget = join(homedir(), '.claude', 'skills', 'heron-audit');
 
   if (!existsSync(join(skillSource, 'SKILL.md'))) {
