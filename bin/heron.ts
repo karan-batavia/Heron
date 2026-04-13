@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('heron')
   .description('Open-source agent checkpoint — vet AI agents before granting production access')
-  .version('0.1.3');
+  .version('0.2.1');
 
 // ─── scan: active mode (Heron → Agent) ───────────────────────────────────
 
@@ -83,6 +83,21 @@ program
         maxFollowUps: parseInt(opts.maxFollowups ?? '3', 10),
         reportDir: opts.reportDir,
       });
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+// ─── install-skill: install Claude Code skill ───────────────────────────────
+
+program
+  .command('install-skill')
+  .description('Install the /heron-audit skill for Claude Code')
+  .action(async () => {
+    try {
+      const { installSkill } = await import('../src/commands/install-skill.js');
+      await installSkill();
     } catch (err) {
       logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -202,7 +217,7 @@ async function interactiveStart(): Promise<void> {
 }
 
 const args = process.argv.slice(2);
-const hasSubcommand = args.length > 0 && ['scan', 'serve', 'help', '--help', '-h', '--version', '-V'].includes(args[0]);
+const hasSubcommand = args.length > 0 && ['scan', 'serve', 'install-skill', 'help', '--help', '-h', '--version', '-V'].includes(args[0]);
 
 if (!hasSubcommand && args.length > 0) {
   // Legacy: flags without subcommand → scan

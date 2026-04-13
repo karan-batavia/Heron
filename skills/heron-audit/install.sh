@@ -1,10 +1,11 @@
 #!/bin/bash
 # Install the /heron-audit skill for Claude Code
 #
-# Usage:
-#   bash skills/heron-audit/install.sh
-#   # or from anywhere:
-#   bash /path/to/Heron/skills/heron-audit/install.sh
+# Usage (from the repo root):
+#   cd Heron && bash skills/heron-audit/install.sh
+#
+# Or install via npx (no clone needed):
+#   npx heron-ai install-skill
 
 set -e
 
