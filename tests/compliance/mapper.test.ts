@@ -123,10 +123,12 @@ describe('control-mappings table', () => {
     expect(ids).toContain('uk-gdpr-dpa-2018');
   });
 
-  it('decisions-about-people activates Colorado AI Act and CCPA', () => {
+  it('decisions-about-people activates Colorado AI Act (CCPA removed from this path in v1)', () => {
     const ids = CONTROL_MAPPINGS['decisions-about-people'].controls.map((c) => c.frameworkId);
     expect(ids).toContain('colorado-ai-act');
-    expect(ids).toContain('ccpa-cpra');
+    // CCPA ADMT sub-flag deferred to v2 (effective 2027-01-01); base CCPA flag
+    // fires only via sensitive-data path. No ccpa-cpra row here.
+    expect(ids).not.toContain('ccpa-cpra');
   });
 });
 
@@ -238,7 +240,7 @@ describe('mapFindingsToRiskCategories', () => {
   it('categorizes restored frameworks per the AAP-31 spec', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
-      transcript: tx(['EHR patient health records, names, emails']),
+      transcript: tx(['EHR patient health records with name, email, phone PII']),
       makesDecisionsAboutPeople: true,
       decisionMakingDetails: 'screens candidates and rejects unqualified applicants for hiring',
     });
@@ -525,5 +527,34 @@ describe('HIPAA scope-gate', () => {
       transcript: tx(['generic customer support data']),
     });
     expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(false);
+  });
+});
+
+describe('CCPA scope-gate (base flag only, no ADMT sub-flag in v1)', () => {
+  it('fires on sensitive-data with hasPII', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['name, email, phone PII collected from users']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(true);
+  });
+
+  it('fires only ONCE on ccpa-cpra (no ADMT sub-flag)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['email, phone PII']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'credit scoring for loan approval',
+    });
+    const ccpaFlags = r.all.filter((f) => f.frameworkId === 'ccpa-cpra');
+    expect(ccpaFlags.length).toBe(1);
+  });
+
+  it('does NOT fire without PII signals', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['generic anonymous telemetry metrics only']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(false);
   });
 });

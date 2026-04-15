@@ -336,12 +336,9 @@ function frameworkApplies(
       return signals.hasHealth && signals.hasCoveredEntitySignal;
 
     case 'ccpa-cpra':
-      // California PII / sensitive data; also ADMT if decisions-about-people.
-      return (
-        (findingType === 'sensitive-data' && signals.hasPII) ||
-        (findingType === 'decisions-about-people' &&
-          signals.decisionImpact !== 'none')
-      );
+      // Base CCPA flag only in v1. ADMT operational obligations effective
+      // 2027-01-01 — sub-flag deferred (see design doc "Items deferred").
+      return findingType === 'sensitive-data' && signals.hasPII;
 
     default:
       // All other frameworks (generic) always fire with their finding.

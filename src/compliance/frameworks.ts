@@ -75,7 +75,7 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
   }),
   'ccpa-cpra': mandatory('ccpa-cpra', 'CCPA / CPRA', ['US'], {
     scopeNote:
-      'California residents. ADMT (automated decision-making technology) rules effective 1 January 2027.',
+      'Applies to businesses handling California residents\' personal information. Broader CCPA regulations effective 2026-01-01. ADMT operational obligations (pre-use notice, opt-out, risk assessment) effective 2027-01-01 for pre-existing systems; new ADMT deployments after 2027-01-01 must comply before deployment. Business applicability threshold: >$26,625,000 annual gross revenue (threshold in § 1798.140(d)(1)(A); CPI-adjusted mechanism in § 1798.199.95(d); next reset 2027-01-01) OR ≥100K CA consumers/households OR ≥50% revenue from selling/sharing PI.',
     summary:
       'Consumer rights: access, deletion, correction, opt-out of sale/sharing, opt-out of profiling for significant decisions.',
   }),

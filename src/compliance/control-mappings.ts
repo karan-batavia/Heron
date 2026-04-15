@@ -193,7 +193,6 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('uk-gdpr-dpa-2018', 'Art. 22', 'UK: right not to be subject to solely automated decisions.'),
       c('colorado-ai-act', 'SB 24-205 §6-1-1702', 'Algorithmic discrimination duty.'),
       c('colorado-ai-act', 'SB 24-205 §6-1-1703', 'Consumer disclosures + human oversight.'),
-      c('ccpa-cpra', '§1798.185(a)(16)', 'ADMT regulations (effective 1 Jan 2027).'),
     ],
   },
 };
