@@ -427,7 +427,7 @@ function describeFinding(
     case 'decisions-about-people': {
       const impact = signals.decisionImpact;
       if (impact === 'high') {
-        const employment = /\b(hir|recruit|employ|candidate|resume|applicant)\b/i.test(
+        const employment = /\b(hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?)\b/i.test(
           decisionDetails ?? '',
         );
         return {

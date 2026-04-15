@@ -418,6 +418,11 @@ describe('detectSignals — new AAP-31 signals', () => {
       expect(detectSignals([], tx([]), true, 'credit scoring').hasSignificantDecisionSignal).toBe(true);
       expect(detectSignals([], tx([]), true, 'school admission').hasSignificantDecisionSignal).toBe(true);
     });
+    it('does not fire on insurance context (outside CCPA 5 domains)', () => {
+      expect(
+        detectSignals([], tx([]), true, 'insurer coverage denial').hasSignificantDecisionSignal,
+      ).toBe(false);
+    });
   });
 
   describe('hasBiometricSignal (Annex III §1)', () => {
