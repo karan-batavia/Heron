@@ -1,4 +1,4 @@
-import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, RegulatoryCompliance, RegulatoryFlag } from './types.js';
+import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, StructuredCompliance, RegulatoryFlag } from './types.js';
 
 /** Filter out interview/orchestration platforms that aren't real business systems */
 function isBusinessSystem(s: SystemAssessment): boolean {
@@ -22,7 +22,7 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderSystems(report.systems),
     renderPositiveFindings(report),
     renderVerdict(report),
-    report.regulatoryCompliance ? renderRegulatoryCompliance(report.regulatoryCompliance) : null,
+    report.compliance ? renderRegulatoryCompliance(report.compliance) : null,
     report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderTranscript(report.transcript),
     renderDisclaimer(),
@@ -37,20 +37,20 @@ function renderHeader(report: AuditReport): string {
   const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
   const dqPart = report.dataQuality ? ` | **Data Quality**: ${report.dataQuality.score}/100` : '';
 
-  // Regulatory one-liner
+  // Regulatory one-liner (AAP-31: derived from compliance.all)
   let regLine = '';
-  if (report.regulatoryCompliance) {
-    const rc = report.regulatoryCompliance;
-    const regParts: string[] = [];
+  if (report.compliance) {
+    const all = report.compliance.all;
     const summarizeJurisdiction = (flags: RegulatoryFlag[]): string => {
       if (flags.some(f => f.severity === 'action-required')) return 'Action Required';
       if (flags.some(f => f.severity === 'clarification-needed')) return 'Needs Clarification';
       if (flags.some(f => f.severity === 'warning')) return 'Review';
       return 'Clear';
     };
-    regParts.push(`EU: ${summarizeJurisdiction(rc.eu)}`);
-    regParts.push(`US: ${summarizeJurisdiction(rc.us)}`);
-    regParts.push(`UK: ${summarizeJurisdiction(rc.uk)}`);
+    const regParts: string[] = [];
+    regParts.push(`EU: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('EU')))}`);
+    regParts.push(`US: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('US')))}`);
+    regParts.push(`UK: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('UK')))}`);
     regLine = `\n**Regulatory**: ${regParts.join(' | ')}`;
   }
 
@@ -421,7 +421,7 @@ function renderFlags(flags: RegulatoryFlag[] | undefined): string {
 }
 
 function renderCategorizedBucket(
-  bucket: NonNullable<RegulatoryCompliance['mandatory']>,
+  bucket: NonNullable<StructuredCompliance['mandatory']>,
 ): string {
   const sections: string[] = [];
   for (const cat of CATEGORY_ORDER) {
@@ -432,17 +432,14 @@ function renderCategorizedBucket(
 }
 
 function renderJurisdictionalAppendix(
-  compliance: RegulatoryCompliance,
+  compliance: StructuredCompliance,
 ): string {
   const rows: string[] = [
     '| Jurisdiction | Mandatory flags | Voluntary flags |',
     '|--------------|-----------------|-----------------|',
   ];
-  for (const [label, flags] of [
-    ['EU', compliance.eu],
-    ['UK', compliance.uk],
-    ['US', compliance.us],
-  ] as const) {
+  for (const label of ['EU', 'UK', 'US'] as const) {
+    const flags = compliance.all.filter(f => f.mandatoryIn?.includes(label));
     const mand = flags.filter((f) => f.tier === 'mandatory').length;
     const vol = flags.filter((f) => f.tier === 'voluntary').length;
     rows.push(`| ${label} | ${mand} | ${vol} |`);
@@ -450,9 +447,7 @@ function renderJurisdictionalAppendix(
   return rows.join('\n');
 }
 
-function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
-  const hasCategorized = Boolean(compliance.mandatory && compliance.voluntary);
-
+function renderRegulatoryCompliance(compliance: StructuredCompliance): string {
   const methodology = `### Methodology
 
 Risk findings are mapped onto control IDs from EU AI Act, GDPR, UK GDPR / DPA 2018,
@@ -476,28 +471,8 @@ ${
     : ''
 }`;
 
-  if (!hasCategorized) {
-    return `## Regulatory Compliance
-
-> This section highlights potential regulatory implications based on interview data. It is advisory (indicative mapping) — consult qualified legal counsel for compliance decisions.
-
-${methodology}
-
-### EU (EU AI Act + GDPR)
-
-${renderFlags(compliance.eu)}
-
-### US (SOC 2 + State AI Laws)
-
-${renderFlags(compliance.us)}
-
-### UK (UK GDPR + ICO Guidance)
-
-${renderFlags(compliance.uk)}`;
-  }
-
-  const mandatory = compliance.mandatory!;
-  const voluntary = compliance.voluntary!;
+  const mandatory = compliance.mandatory;
+  const voluntary = compliance.voluntary;
 
   return `## Regulatory Compliance
 

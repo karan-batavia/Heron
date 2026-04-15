@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderMarkdownReport } from '../../src/report/templates.js';
+import { mapFindingsToRiskCategories } from '../../src/compliance/mapper.js';
 import type { AuditReport, SystemAssessment } from '../../src/report/types.js';
 
 const sampleSystem: SystemAssessment = {
@@ -190,5 +191,47 @@ describe('report templates', () => {
     expect(md).toContain('71/100');
     expect(md).toContain('systemId');
     expect(md).toContain('NOT PROVIDED');
+  });
+});
+
+// ─── AAP-31: AuditReport.compliance shape assertions ────────────────────────
+
+describe('AuditReport shape — AAP-31 StructuredCompliance', () => {
+  const compliance = mapFindingsToRiskCategories({
+    systems: [sampleSystem],
+    transcript: [{ question: 'What is your purpose?', answer: 'I process invoices', category: 'purpose' }],
+    makesDecisionsAboutPeople: false,
+  });
+
+  const reportWithCompliance: AuditReport = {
+    ...sampleReport,
+    compliance,
+  };
+
+  it('report.compliance exists and has mandatory/voluntary/all/mappingVersion', () => {
+    expect(reportWithCompliance.compliance).toBeDefined();
+    expect(reportWithCompliance.compliance!.mandatory).toBeDefined();
+    expect(reportWithCompliance.compliance!.voluntary).toBeDefined();
+    expect(Array.isArray(reportWithCompliance.compliance!.all)).toBe(true);
+    expect(typeof reportWithCompliance.compliance!.mappingVersion).toBe('string');
+  });
+
+  it('report does NOT carry legacy regulatory field', () => {
+    expect((reportWithCompliance as Record<string, unknown>).regulatory).toBeUndefined();
+    expect((reportWithCompliance as Record<string, unknown>).regulatoryCompliance).toBeUndefined();
+  });
+
+  it('templates render compliance section when compliance is provided', () => {
+    const md = renderMarkdownReport(reportWithCompliance);
+    expect(md).toContain('## Regulatory Compliance');
+    expect(md).toContain('Mandatory Law');
+    expect(md).toContain('Voluntary Frameworks');
+    expect(md).toContain('Jurisdictional Appendix');
+  });
+
+  it('compliance.all items have mandatoryIn array for jurisdictional filtering', () => {
+    for (const flag of reportWithCompliance.compliance!.all) {
+      expect(Array.isArray(flag.mandatoryIn)).toBe(true);
+    }
   });
 });

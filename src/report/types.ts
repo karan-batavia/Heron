@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CategorizedCompliance } from '../compliance/mapper.js';
 
 // ─── Severity & Blast Radius enums ──────────────────────────────────────────
 
@@ -190,17 +191,8 @@ export interface CategorizedBucket {
   'sector-specific': RegulatoryFlag[];
 }
 
-export interface RegulatoryCompliance {
-  // Legacy jurisdictional buckets (kept so pre-AAP-31 consumers keep working).
-  eu: RegulatoryFlag[];
-  us: RegulatoryFlag[];
-  uk: RegulatoryFlag[];
-  // AAP-31 extensions.
-  mandatory?: CategorizedBucket;
-  voluntary?: CategorizedBucket;
-  mappingVersion?: string;
-  frameworksActivated?: string[];
-}
+/** AAP-31: replaces legacy RegulatoryCompliance {eu, us, uk} on AuditReport. */
+export type StructuredCompliance = CategorizedCompliance;
 
 // ─── Audit Report ───────────────────────────────────────────────────────────
 
@@ -221,7 +213,7 @@ export const auditReportSchema = z.object({
   dataQuality: dataQualitySchema.optional(),
   makesDecisionsAboutPeople: z.boolean().optional(),
   decisionMakingDetails: z.string().optional(),
-  regulatoryCompliance: z.any().optional(), // RegulatoryCompliance (not Zod-validated, computed post-analysis)
+  compliance: z.any().optional(), // StructuredCompliance (CategorizedCompliance, not Zod-validated)
   metadata: z.object({
     date: z.string(),
     target: z.string(),
@@ -230,5 +222,5 @@ export const auditReportSchema = z.object({
   }),
 });
 export type AuditReport = z.infer<typeof auditReportSchema> & {
-  regulatoryCompliance?: RegulatoryCompliance;
+  compliance?: StructuredCompliance;
 };

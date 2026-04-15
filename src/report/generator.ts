@@ -1,4 +1,4 @@
-import type { AuditReport, DataQuality, QAPair, RegulatoryCompliance } from './types.js';
+import type { AuditReport, DataQuality, QAPair } from './types.js';
 import type { InterviewSession } from '../interview/interviewer.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
 import { computeRiskScore } from '../analysis/risk-scorer.js';
@@ -34,8 +34,13 @@ export async function generateReport(
   // 2. Compute risk score from structured per-system data
   const riskScore = computeRiskScore(analysis.systems, analysis.risks);
 
-  // 3. Compute regulatory flags
-  const regulatoryCompliance = computeRegulatoryFlags(analysis, session.transcript);
+  // 3. Compute structured compliance (AAP-31: CategorizedCompliance)
+  const compliance = mapFindingsToRiskCategories({
+    systems: analysis.systems,
+    transcript: session.transcript,
+    makesDecisionsAboutPeople: analysis.makesDecisionsAboutPeople,
+    decisionMakingDetails: analysis.decisionMakingDetails,
+  });
 
   // 4. Build report object
   const report: AuditReport = {
@@ -54,7 +59,7 @@ export async function generateReport(
     dataQuality: computeDataQualityFromTranscript(session.transcript),
     makesDecisionsAboutPeople: analysis.makesDecisionsAboutPeople,
     decisionMakingDetails: analysis.decisionMakingDetails,
-    regulatoryCompliance,
+    compliance,
     metadata: {
       date: session.startedAt.toISOString().split('T')[0],
       target: options.target,
@@ -71,72 +76,10 @@ export async function generateReport(
   return { report: formatted, reportJson: report };
 }
 
-// ─── Decision Impact Classification ────────────────────────────────────────
-
-type DecisionImpact = 'high' | 'medium' | 'unclear' | 'none';
-
-/**
- * Classify the impact level of decisions about people.
- * High: hiring, credit, insurance, medical, legal — has legal/significant effects
- * Medium: scoring leads, ranking, recommending, moderating — influences but no legal effect
- * Unclear: agent says it decides about people, but we can't determine impact level
- */
-function classifyDecisionImpact(
-  decidesAboutPeople: boolean,
-  details?: string,
-): DecisionImpact {
-  if (!decidesAboutPeople) return 'none';
-  if (!details || details === 'NOT PROVIDED' || details.trim().length < 10) return 'unclear';
-
-  const text = details.toLowerCase();
-
-  // High-impact: legal/significant effects on individuals
-  const highImpact = /\b(hir(e|ing)|recruit|screen.?candidate|reject|deny|approv(e|al|ing).*(loan|credit|mortgage|claim|application)|terminat|fir(e|ing)|credit.?scor|insurance.?claim|diagnos|prescri|legal.?decision|sentenc|parole|bail|evict|expel|suspend|disqualif|ban\b|block.?user|delist)\b/i;
-  if (highImpact.test(text)) return 'high';
-
-  // Medium-impact: influences outcomes but no legal/binding effect
-  const mediumImpact = /\b(scor(e|ing)|rank|filter|recommend|prioriti[sz]|moderate|flag|qualif(y|ied)|match|sort|categori[sz]|segment|lead|prospect|outreach|target|personali[sz])\b/i;
-  if (mediumImpact.test(text)) return 'medium';
-
-  return 'unclear';
-}
-
-/**
- * Derive regulatory flags from analysis results and transcript signals.
- *
- * AAP-31: delegates to the typed compliance mapper (`src/compliance/mapper.ts`),
- * which produces categorized mandatory/voluntary buckets. The legacy
- * `{eu, us, uk}` projection is computed for backward compatibility.
- */
-export function computeRegulatoryFlags(
-  analysis: { systems: AuditReport['systems']; makesDecisionsAboutPeople?: boolean; decisionMakingDetails?: string },
-  transcript: QAPair[],
-): RegulatoryCompliance {
-  const bundle = mapFindingsToRiskCategories({
-    systems: analysis.systems,
-    transcript,
-    makesDecisionsAboutPeople: analysis.makesDecisionsAboutPeople,
-    decisionMakingDetails: analysis.decisionMakingDetails,
-  });
-
-  // Temporary inline projection — full removal in Task 11
-  const eu = bundle.all.filter(f => f.mandatoryIn.includes('EU') || f.tier === 'voluntary');
-  const uk = bundle.all.filter(f => f.mandatoryIn.includes('UK') || f.tier === 'voluntary');
-  const us = bundle.all.filter(f => f.mandatoryIn.includes('US') || f.tier === 'voluntary');
-
-  return {
-    eu,
-    us,
-    uk,
-    mandatory: bundle.mandatory,
-    voluntary: bundle.voluntary,
-    mappingVersion: bundle.mappingVersion,
-    frameworksActivated: bundle.frameworksActivated,
-  };
-}
-
-// AAP-31: legacy inline flag builder (~220 lines) removed; all logic now
-// lives in src/compliance/{frameworks,control-mappings,mapper}.ts.
+// AAP-31: computeRegulatoryFlags (legacy jurisdictional projection) removed.
+// All compliance logic lives in src/compliance/{frameworks,control-mappings,mapper}.ts.
+// generator.ts calls mapFindingsToRiskCategories() directly and stores the
+// result in AuditReport.compliance (StructuredCompliance / CategorizedCompliance).
 
 /** Compute data quality metrics from the interview transcript (CLI path) */
 function computeDataQualityFromTranscript(transcript: QAPair[]): DataQuality {
