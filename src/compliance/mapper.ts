@@ -92,7 +92,7 @@ const CONSEQUENTIAL_DECISION_PATTERN = new RegExp(
   '\\b(' + [
     'education|school|university|admission|enrollment|financial.?aid',
     'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?|screen|promot|terminat|fir(e|ing)',
-    'credit|loan|mortgage|underwrit|score|denial',
+    'credit|loan|mortgage|underwrit|credit.?scor',
     'benefit|eligib|license|permit|government.?service',
     'treatment|diagnos|prescri|clinical',
     'rent(al)?|lease|eviction|housing',
@@ -321,14 +321,12 @@ function frameworkApplies(
 ): boolean {
   switch (frameworkId) {
     case 'colorado-ai-act':
-      // Applies only for high-impact or unclear consequential decisions,
-      // or when the finding itself is sector-specific regulatory scope.
+      // SB 24-205 §6-1-1701(3) — consequential decisions (8 enumerated domains).
+      // Fires only on high-impact decisions AND signal match for one of 8 domains.
       return (
-        (findingType === 'decisions-about-people' &&
-          (signals.decisionImpact === 'high' ||
-            signals.decisionImpact === 'unclear')) ||
-        (findingType === 'regulatory-flags' &&
-          signals.decisionImpact !== 'none')
+        findingType === 'decisions-about-people' &&
+        signals.decisionImpact === 'high' &&
+        signals.hasConsequentialDecisionSignal
       );
 
     case 'hipaa':

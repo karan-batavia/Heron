@@ -64,7 +64,7 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
     ['US'],
     {
       scopeNote:
-        'Colorado residents / deployers operating in Colorado. Applies to consequential decisions. Effective 30 June 2026.',
+        'Effective 2026-06-30 (delayed from 2026-02-01 via SB 25B-004, Aug 2025). Applies to deployers doing business in Colorado. AG enforcement; no private right of action. WATCH: on 2026-03-17 a Polis-led working group released a "Proposed ADMT Framework" — working-group endorsement, NOT yet a filed bill in the General Assembly. If enacted as a repeal-and-replace it would take effect 2027-01-01. Absent enactment, SB 24-205 takes effect 2026-06-30 as scheduled.',
       summary:
         'Requires algorithmic discrimination testing, consumer disclosures, human oversight, annual compliance reviews.',
     },

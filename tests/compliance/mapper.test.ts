@@ -219,7 +219,7 @@ describe('mapFindingsToRiskCategories', () => {
       systems: [baseSystem()],
       transcript: tx(['EHR with patient health records, names, emails, ssn']),
       makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screens job applicants and rejects unqualified candidates',
+      decisionMakingDetails: 'screens job applicants and makes hiring decisions',
     });
     const mandIds = new Set(
       [
@@ -447,5 +447,47 @@ describe('hasEmploymentDecisions — plural/gerund matching (regex bug fix)', ()
   });
   it('matches "recruiting/recruiter"', () => {
     expect(detectSignals([], tx(['our recruiter uses this']), true, 'recruiting').hasEmploymentDecisions).toBe(true);
+  });
+});
+
+describe('Colorado AI Act scope-gate', () => {
+  const baseInput = {
+    systems: [baseSystem()],
+    transcript: tx(['hire candidates']),
+    makesDecisionsAboutPeople: true,
+  };
+
+  it('fires on decisionImpact=high + consequential signal', () => {
+    const r = mapFindingsToRiskCategories({
+      ...baseInput,
+      decisionMakingDetails: 'screen candidates and make hiring decisions',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
+  });
+
+  it('does NOT fire on decisionImpact=medium (generic scoring)', () => {
+    const r = mapFindingsToRiskCategories({
+      ...baseInput,
+      decisionMakingDetails: 'rank leads for sales outreach',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
+  });
+
+  it('does NOT fire on decisionImpact=unclear', () => {
+    const r = mapFindingsToRiskCategories({
+      ...baseInput,
+      decisionMakingDetails: 'make decisions',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
+  });
+
+  it('does NOT fire on high-impact decision outside 8 domains', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['reject refund requests for customers']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'reject refund requests based on fraud score',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
   });
 });
