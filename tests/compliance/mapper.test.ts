@@ -558,3 +558,12 @@ describe('CCPA scope-gate (base flag only, no ADMT sub-flag in v1)', () => {
     expect(r.all.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(false);
   });
 });
+
+describe('Framework registry — primarySource', () => {
+  it('every framework has a primarySource URL', () => {
+    for (const [id, f] of Object.entries(FRAMEWORKS)) {
+      expect(f.primarySource, `framework ${id}`).toBeTruthy();
+      expect(f.primarySource, `framework ${id}`).toMatch(/^https?:\/\//);
+    }
+  });
+});

@@ -75,6 +75,8 @@ export interface Framework {
   scopeNote?: string;
   /** Optional short blurb rendered in the jurisdictional appendix. */
   summary?: string;
+  /** Primary source URL: statutory text, regulatory page, or official standard. Required for audit trail. */
+  primarySource: string;
 }
 
 // ─── Finding types ──────────────────────────────────────────────────────────
