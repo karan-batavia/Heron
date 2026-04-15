@@ -87,9 +87,8 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       // ── Base eu-ai-act (transparency + baseline) ──
       c('eu-ai-act', 'Art. 50(1)', 'Transparency — inform affected persons.'),
       // ── eu-ai-act-high-risk (Annex III data governance) ──
-      c('eu-ai-act-high-risk', 'Art. 10(1-5)', 'Data governance for high-risk AI systems.'),
+      c('eu-ai-act-high-risk', 'Art. 10(1-5)', 'Data governance for high-risk AI systems — training/validation/test sets.'),
       c('eu-ai-act-high-risk', 'Art. 13', 'Transparency and provision of information (high-risk).'),
-      c('eu-ai-act-high-risk', 'Art. 10', 'Data governance — training/validation/test sets.'),
       c('eu-ai-act-high-risk', 'Art. 15', 'Accuracy, robustness, cybersecurity (high-risk).'),
       c('gdpr', 'Art. 6', 'Lawful basis for processing.'),
       c('gdpr', 'Art. 35', 'DPIA for high-risk processing.'),

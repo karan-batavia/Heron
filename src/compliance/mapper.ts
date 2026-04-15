@@ -79,6 +79,15 @@ export interface ComplianceSignals {
   // NEW in AAP-31 v1 — statute scope-gates
   hasCoveredEntitySignal: boolean;
   hasConsequentialDecisionSignal: boolean;
+
+  /**
+   * RESERVED for v2 — CCPA ADMT sub-flag (operational obligations effective
+   * 2027-01-01). Detects the narrower CCPA § 7001(e) "significant decisions"
+   * 5-domain list (finance/housing/education/employment/health-care access).
+   * Currently computed and exposed on ComplianceSignals but NOT consumed by
+   * any frameworkApplies case in v1. Will be gated by a ccpa-cpra-admt sub-flag
+   * when Task AAP-43 deferred items land.
+   */
   hasSignificantDecisionSignal: boolean;
 
   // NEW in AAP-31 v1 — EU AI Act Annex III high-risk detection
