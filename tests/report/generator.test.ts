@@ -226,7 +226,8 @@ describe('AuditReport shape — AAP-31 StructuredCompliance', () => {
     expect(md).toContain('## Regulatory Compliance');
     expect(md).toContain('Mandatory Law');
     expect(md).toContain('Voluntary Frameworks');
-    expect(md).toContain('Jurisdictional Appendix');
+    // AAP-31: Jurisdictional Appendix removed in favour of Methodology + tiered structure
+    expect(md).not.toContain('Jurisdictional Appendix');
   });
 
   it('compliance.all items have mandatoryIn array for jurisdictional filtering', () => {

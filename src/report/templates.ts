@@ -385,112 +385,55 @@ ${items}
 
 // ─── Regulatory Compliance (AAP-31) ────────────────────────────────────────
 
-const SEVERITY_LABELS: Record<string, string> = {
-  'action-required': ' `ACTION REQUIRED`',
-  warning: ' `REVIEW`',
-  'clarification-needed': ' `NEEDS CLARIFICATION`',
-};
+import type { RiskCategory } from '../compliance/types.js';
 
-const CATEGORY_LABELS: Record<
-  'privacy' | 'ip' | 'consumer-protection' | 'sector-specific',
-  string
-> = {
-  privacy: 'Privacy',
-  ip: 'Intellectual Property',
-  'consumer-protection': 'Consumer Protection',
-  'sector-specific': 'Sector-Specific',
-};
+const CATEGORIES: Array<{ key: RiskCategory; title: string }> = [
+  { key: 'privacy', title: 'Privacy' },
+  { key: 'ip', title: 'IP' },
+  { key: 'consumer-protection', title: 'Consumer Protection' },
+  { key: 'sector-specific', title: 'Sector-Specific' },
+];
 
-const CATEGORY_ORDER: Array<
-  'privacy' | 'ip' | 'consumer-protection' | 'sector-specific'
-> = ['privacy', 'ip', 'consumer-protection', 'sector-specific'];
-
-function renderFlagLine(f: RegulatoryFlag): string {
-  const label = SEVERITY_LABELS[f.severity] ?? '';
-  const controls =
-    f.controlIds && f.controlIds.length > 0
-      ? ` *(controls: ${f.controlIds.join(', ')})*`
-      : '';
-  const scope = f.scopeNote ? `\n  *Scope: ${f.scopeNote}*` : '';
-  return `- **${f.framework}**${label}${controls}\n  ${f.description}${scope}`;
-}
-
-function renderFlags(flags: RegulatoryFlag[] | undefined): string {
-  if (!flags || flags.length === 0) return 'No specific flags identified.';
-  return flags.map(renderFlagLine).join('\n\n');
-}
-
-function renderCategorizedBucket(
-  bucket: NonNullable<StructuredCompliance['mandatory']>,
+function renderTierSection(
+  c: StructuredCompliance,
+  tier: 'mandatory' | 'voluntary',
+  heading: string,
 ): string {
-  const sections: string[] = [];
-  for (const cat of CATEGORY_ORDER) {
-    const flags = bucket[cat];
-    sections.push(`#### ${CATEGORY_LABELS[cat]}\n\n${renderFlags(flags)}`);
+  const bucket = c[tier];
+  let out = `### ${heading}\n\n`;
+  let anyEmitted = false;
+  for (const { key, title } of CATEGORIES) {
+    const flags = bucket[key] ?? [];
+    if (flags.length === 0) continue;
+    anyEmitted = true;
+    out += `#### ${title}\n\n`;
+    for (const f of flags) {
+      const controls = (f.controlIds ?? []).join(', ');
+      out += `- **${f.framework}** — ${controls} *(indicative mapping)*\n`;
+      out += `  ${f.description}\n\n`;
+    }
   }
-  return sections.join('\n\n');
+  if (!anyEmitted) {
+    out += `_No ${tier} obligations identified from current signals._\n\n`;
+  }
+  return out;
 }
 
-function renderJurisdictionalAppendix(
-  compliance: StructuredCompliance,
-): string {
-  const rows: string[] = [
-    '| Jurisdiction | Mandatory flags | Voluntary flags |',
-    '|--------------|-----------------|-----------------|',
-  ];
-  for (const label of ['EU', 'UK', 'US'] as const) {
-    const flags = compliance.all.filter(f => f.mandatoryIn?.includes(label));
-    const mand = flags.filter((f) => f.tier === 'mandatory').length;
-    const vol = flags.filter((f) => f.tier === 'voluntary').length;
-    rows.push(`| ${label} | ${mand} | ${vol} |`);
-  }
-  return rows.join('\n');
+export function renderStructuredCompliance(c: StructuredCompliance): string {
+  return [
+    `## Regulatory Compliance`,
+    ``,
+    `### Methodology`,
+    ``,
+    `Findings are anchored to NIST AI RMF 1.0, ISO/IEC 23894, ISO/IEC 42001, EU AI Act 2024/1689, GDPR 2016/679, UK GDPR/DPA 2018, HIPAA, SOC 2 TSC 2017, Colorado AI Act SB 24-205, and CCPA/CPRA. Mapping version: \`${c.mappingVersion}\`. Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
+    ``,
+    renderTierSection(c, 'mandatory', 'Mandatory Law'),
+    renderTierSection(c, 'voluntary', 'Voluntary Frameworks'),
+  ].join('\n');
 }
 
 function renderRegulatoryCompliance(compliance: StructuredCompliance): string {
-  const methodology = `### Methodology
-
-Risk findings are mapped onto control IDs from EU AI Act, GDPR, UK GDPR / DPA 2018,
-Colorado AI Act, HIPAA, CCPA/CPRA, NIST AI RMF 1.0,
-ISO/IEC 23894, ISO/IEC 42001, and SOC 2 TSC. Mappings are
-**indicative** — they surface which framework clauses a finding typically activates,
-not a certification that the controls are satisfied. Always validate with qualified
-counsel and your compliance team.
-
-- **Mandatory law** is separated from **voluntary frameworks** so the reader can
-  see what is legally binding (in the relevant jurisdiction) versus what is
-  best-practice guidance.
-- Findings are grouped into four **risk categories**: Privacy, Intellectual
-  Property, Consumer Protection, and Sector-Specific obligations.
-- US-state-specific statutes (Colorado AI Act, CCPA/CPRA) and the
-  US sector-specific HIPAA rule fire only when the detected signals match their
-  jurisdictional / sector scope.
-${
-  compliance.mappingVersion
-    ? `- Mapping dataset version: \`${compliance.mappingVersion}\` (source: AAP-30/31 research).`
-    : ''
-}`;
-
-  const mandatory = compliance.mandatory;
-  const voluntary = compliance.voluntary;
-
-  return `## Regulatory Compliance
-
-> This section highlights potential regulatory implications based on interview data. It is advisory (indicative mapping) — consult qualified legal counsel for compliance decisions.
-
-${methodology}
-
-### Mandatory Law (EU AI Act, GDPR, UK GDPR/DPA 2018, Colorado AI Act, HIPAA, CCPA/CPRA)
-
-${renderCategorizedBucket(mandatory)}
-
-### Voluntary Frameworks (NIST AI RMF, ISO 23894/42001, SOC 2)
-
-${renderCategorizedBucket(voluntary)}
-
-### Jurisdictional Appendix
-
-${renderJurisdictionalAppendix(compliance)}`;
+  return renderStructuredCompliance(compliance);
 }
 
 // ─── Disclaimer ─────────────────────────────────────────────────────────────
