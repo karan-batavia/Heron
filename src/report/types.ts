@@ -170,12 +170,36 @@ export interface RegulatoryFlag {
   framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "SOC 2 CC6.1"
   severity: 'info' | 'warning' | 'action-required' | 'clarification-needed';
   description: string;
+  /** AAP-31: control IDs activated by this finding (optional for legacy flags). */
+  controlIds?: string[];
+  /** AAP-31: risk category. */
+  category?: 'privacy' | 'ip' | 'consumer-protection' | 'sector-specific';
+  /** AAP-31: mandatory vs voluntary tier. */
+  tier?: 'mandatory' | 'voluntary';
+  /** AAP-31: jurisdictions where the framework is mandatory. */
+  mandatoryIn?: ReadonlyArray<'EU' | 'UK' | 'US' | 'global'>;
+  /** AAP-31: human-readable jurisdictional scope clarification. */
+  scopeNote?: string;
+}
+
+/** AAP-31: per-category buckets under mandatory / voluntary tiers. */
+export interface CategorizedBucket {
+  privacy: RegulatoryFlag[];
+  ip: RegulatoryFlag[];
+  'consumer-protection': RegulatoryFlag[];
+  'sector-specific': RegulatoryFlag[];
 }
 
 export interface RegulatoryCompliance {
+  // Legacy jurisdictional buckets (kept so pre-AAP-31 consumers keep working).
   eu: RegulatoryFlag[];
   us: RegulatoryFlag[];
   uk: RegulatoryFlag[];
+  // AAP-31 extensions.
+  mandatory?: CategorizedBucket;
+  voluntary?: CategorizedBucket;
+  mappingVersion?: string;
+  frameworksActivated?: string[];
 }
 
 // ─── Audit Report ───────────────────────────────────────────────────────────
