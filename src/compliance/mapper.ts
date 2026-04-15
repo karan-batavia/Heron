@@ -92,7 +92,7 @@ const CONSEQUENTIAL_DECISION_PATTERN = new RegExp(
   '\\b(' + [
     'education|school|university|admission|enrollment|financial.?aid',
     'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?|screen|promot|terminat|fir(e|ing)',
-    'credit|loan|mortgage|underwrit|credit.?scor',
+    'credit|loan|mortgage|underwrit|credit.?scor|deni(al|ed)?',
     'benefit|eligib|license|permit|government.?service',
     'treatment|diagnos|prescri|clinical',
     'rent(al)?|lease|eviction|housing',

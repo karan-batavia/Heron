@@ -490,4 +490,14 @@ describe('Colorado AI Act scope-gate', () => {
     });
     expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
   });
+
+  it('fires on loan denial (credit/lending domain)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'approve or deny loan applications based on underwriting',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
+  });
 });
