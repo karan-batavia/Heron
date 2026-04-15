@@ -263,7 +263,7 @@ describe('mapFindingsToRiskCategories', () => {
   it('flags carry mandatoryIn jurisdictions and scopeNote where applicable', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
-      transcript: tx(['patient health records']),
+      transcript: tx(['EHR patient health records']),
     });
     const hipaa = r.all.find((f) => f.frameworkId === 'hipaa');
     expect(hipaa).toBeDefined();
@@ -278,7 +278,7 @@ describe('toLegacyJurisdictions', () => {
   it('routes US-specific mandatory flags into us bucket', () => {
     const bundle = mapFindingsToRiskCategories({
       systems: [baseSystem()],
-      transcript: tx(['patient health records, names, ssn']),
+      transcript: tx(['EHR patient health records, names, ssn']),
       makesDecisionsAboutPeople: true,
       decisionMakingDetails: 'screens candidates for hiring and rejects unqualified applicants',
     });
@@ -499,5 +499,31 @@ describe('Colorado AI Act scope-gate', () => {
       decisionMakingDetails: 'approve or deny loan applications based on underwriting',
     });
     expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
+  });
+});
+
+describe('HIPAA scope-gate', () => {
+  it('fires on hasHealth + covered-entity signal', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['EHR patient records clinical data']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(true);
+  });
+
+  it('does NOT fire on hasHealth without covered-entity signal', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['wellness app with health data from users']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(false);
+  });
+
+  it('does NOT fire when no health signal present', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['generic customer support data']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(false);
   });
 });

@@ -330,8 +330,10 @@ function frameworkApplies(
       );
 
     case 'hipaa':
-      // Health signals only.
-      return signals.hasHealth;
+      // 16 CFR § 318.1 + 45 CFR 160.103 — fires only when covered-entity signal
+      // matches. Non-covered health apps fall under FTC HBNR; description disclaimer
+      // directs deployer there.
+      return signals.hasHealth && signals.hasCoveredEntitySignal;
 
     case 'ccpa-cpra':
       // California PII / sensitive data; also ADMT if decisions-about-people.

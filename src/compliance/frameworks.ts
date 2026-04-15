@@ -70,8 +70,7 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
     },
   ),
   hipaa: mandatory('hipaa', 'HIPAA', ['US'], {
-    scopeNote:
-      'Applies only to covered entities (providers, health plans, clearinghouses) and their business associates.',
+    scopeNote: 'Applies only to covered entities (providers, health plans, clearinghouses) and business associates per 45 CFR 160.103. Non-covered health apps fall under FTC Health Breach Notification Rule (16 CFR Part 318) — mutually exclusive per 16 CFR § 318.1. HIPAA Security Rule NPRM (Jan 6 2025) is not yet finalized (OCR targets May 2026).',
     summary: 'Privacy Rule + Security Rule obligations for protected health information (PHI).',
   }),
   'ccpa-cpra': mandatory('ccpa-cpra', 'CCPA / CPRA', ['US'], {
