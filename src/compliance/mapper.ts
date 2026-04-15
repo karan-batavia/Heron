@@ -320,6 +320,16 @@ function frameworkApplies(
   signals: ComplianceSignals,
 ): boolean {
   switch (frameworkId) {
+    case 'eu-ai-act-high-risk':
+      // Annex III categories §1, §3, §4, §5, §6 gated. §2, §7, §8 deferred.
+      return (
+        (findingType === 'sensitive-data' && signals.hasSensitivePII && signals.hasBiometricSignal) ||
+        ((findingType === 'decisions-about-people' || findingType === 'regulatory-flags') && signals.isEducationAssessmentContext) ||
+        (findingType === 'decisions-about-people' && signals.hasEmploymentDecisions && signals.decisionImpact !== 'none') ||
+        (findingType === 'decisions-about-people' && signals.hasOrgBlast && signals.decisionImpact === 'high') ||
+        signals.isLawEnforcementContext
+      );
+
     case 'colorado-ai-act':
       // SB 24-205 §6-1-1701(3) — consequential decisions (8 enumerated domains).
       // Fires only on high-impact decisions AND signal match for one of 8 domains.

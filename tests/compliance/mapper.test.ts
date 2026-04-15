@@ -567,3 +567,71 @@ describe('Framework registry — primarySource', () => {
     }
   });
 });
+
+describe('EU AI Act — two-level gating', () => {
+  it('base eu-ai-act fires on every active finding', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['name, email PII']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act')).toBe(true);
+  });
+
+  it('high-risk fires on biometric sensitive-data (Annex III §1)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['facial recognition with ssn government id']),
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+  });
+
+  it('high-risk fires on employment decisions (Annex III §4)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'screen candidates for hiring',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+  });
+
+  it('high-risk fires on education assessment (Annex III §3)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'student exam grading and admission decisions',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+  });
+
+  it('high-risk fires on law enforcement (Annex III §6)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['police criminal investigation']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'predictive policing',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+  });
+
+  it('high-risk does NOT fire on generic decisions without Annex III match', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['refund request approval decisions']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'approve refunds based on policy',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(false);
+  });
+});
+
+describe('Control-mapping citations — every row carries a note', () => {
+  it('every FrameworkControl has a non-empty note', () => {
+    for (const [findingType, mapping] of Object.entries(CONTROL_MAPPINGS)) {
+      for (const ctrl of mapping.controls) {
+        expect(ctrl.note, `${findingType} / ${ctrl.frameworkId} / ${ctrl.controlId}`).toBeTruthy();
+      }
+    }
+  });
+});

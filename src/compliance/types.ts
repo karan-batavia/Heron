@@ -37,6 +37,7 @@ export type FrameworkTier = (typeof FRAMEWORK_TIERS)[number];
 export const FRAMEWORK_IDS = [
   // ── Mandatory, EU-wide ───────────────────────────────────────────────────
   'eu-ai-act',
+  'eu-ai-act-high-risk',
   'gdpr',
   // ── Mandatory, UK ────────────────────────────────────────────────────────
   'uk-gdpr-dpa-2018',

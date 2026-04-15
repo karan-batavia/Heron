@@ -37,10 +37,19 @@ function voluntary(
 
 export const FRAMEWORKS: Record<FrameworkId, Framework> = {
   // ── Mandatory, EU-wide ───────────────────────────────────────────────────
-  'eu-ai-act': mandatory('eu-ai-act', 'EU AI Act', ['EU'], {
+  'eu-ai-act': mandatory('eu-ai-act', 'EU AI Act — Applicable', ['EU'], {
     primarySource: 'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:L_202401689',
     summary:
-      'Regulation (EU) 2024/1689. High-risk AI systems must meet Annex III obligations by 2 August 2026.',
+      'Regulation (EU) 2024/1689 base applicability. Applies to providers, deployers, importers, distributors, product manufacturers where the AI system is placed on the EU market or its output is used in the EU.',
+    scopeNote:
+      'Prohibited practices (Art. 5) in force since 2025-02-02. GPAI obligations since 2025-08-02. High-risk Annex III obligations effective 2026-08-02. Art. 50 transparency effective 2026-08-02.',
+  }),
+  'eu-ai-act-high-risk': mandatory('eu-ai-act-high-risk', 'EU AI Act — High-Risk (Annex III)', ['EU'], {
+    primarySource: 'https://artificialintelligenceact.eu/annex/3/',
+    summary:
+      'Annex III high-risk classification triggers: risk management (Art. 9), data governance (Art. 10), technical documentation (Art. 11), record-keeping (Art. 12), instructions for use (Art. 13), human oversight (Art. 14), accuracy/robustness/cybersecurity (Art. 15), conformity assessment (Art. 43), EU database registration (Art. 49), post-market monitoring (Art. 72). Deployers additionally owe FRIA (Art. 27) for public bodies.',
+    scopeNote:
+      'High-risk obligations effective 2026-08-02. Art. 6(3) exemption requires one of 4 enumerated conditions AND the system must not materially influence decision outcomes. CRITICAL: Art. 6(3) final paragraph — "An AI system referred to in Annex III shall always be considered to be high-risk where the AI system performs profiling of natural persons" — profiling carve-out applies to ALL Annex III categories (§1-§8). Commission missed 2026-02-02 Art. 6 guidelines deadline.',
   }),
   gdpr: mandatory('gdpr', 'GDPR', ['EU'], {
     primarySource: 'https://eur-lex.europa.eu/eli/reg/2016/679/oj',
