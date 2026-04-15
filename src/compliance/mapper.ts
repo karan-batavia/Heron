@@ -75,7 +75,90 @@ export interface ComplianceSignals {
   hasOrgBlastWithWrites: boolean;
   decisionImpact: DecisionImpact;
   businessSystems: SystemAssessment[];
+
+  // NEW in AAP-31 v1 — statute scope-gates
+  hasCoveredEntitySignal: boolean;
+  hasConsequentialDecisionSignal: boolean;
+  hasSignificantDecisionSignal: boolean;
+
+  // NEW in AAP-31 v1 — EU AI Act Annex III high-risk detection
+  hasBiometricSignal: boolean;
+  isEducationAssessmentContext: boolean;
+  isLawEnforcementContext: boolean;
 }
+
+// Colorado SB 24-205 §6-1-1701(3): 8 enumerated consequential-decision domains.
+const CONSEQUENTIAL_DECISION_PATTERN = new RegExp(
+  '\\b(' + [
+    'education|school|university|admission|enrollment|financial.?aid',
+    'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?|screen|promot|terminat|fir(e|ing)',
+    'credit|loan|mortgage|underwrit|score|denial',
+    'benefit|eligib|license|permit|government.?service',
+    'treatment|diagnos|prescri|clinical',
+    'rent(al)?|lease|eviction|housing',
+    'insur(ance)?|claim|premium',
+    'sentenc|parole|bail|deport|legal.?service',
+  ].join('|') + ')\\b',
+  'i',
+);
+
+// CCPA § 7001(e) "significant decisions": narrower 5-domain list.
+const SIGNIFICANT_DECISION_PATTERN = new RegExp(
+  '\\b(' + [
+    'credit|loan|mortgage|underwrit',
+    'rent|lease|housing',
+    'education|school|university|admission|enrollment',
+    'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|applicants?',
+    'treatment|clinical|health.?care',
+  ].join('|') + ')\\b',
+  'i',
+);
+
+// HIPAA covered-entity detection per 45 CFR 160.103.
+const COVERED_ENTITY_PATTERN = new RegExp(
+  '\\b(' + [
+    'ehr|emr|phi|protected.?health',
+    'clinical|provider|hospital|clinic',
+    'covered.?entity|business.?associate|baa',
+    'hipaa|payer|insurer|claims',
+  ].join('|') + ')\\b',
+  'i',
+);
+
+// EU AI Act Annex III §1 — biometric identification/categorisation/emotion recognition.
+const BIOMETRIC_PATTERN = new RegExp(
+  '\\b(' + [
+    'biometric|facial.?recognition|face.?recognit',
+    'voiceprint|voice.?biometric|speaker.?recognit',
+    'fingerprint|iris|retina|gait',
+    'emotion.?recognition|affect.?detect',
+    'liveness|anti.?spoof',
+  ].join('|') + ')\\b',
+  'i',
+);
+
+// EU AI Act Annex III §3 — education/vocational training assessment.
+const EDUCATION_ASSESSMENT_PATTERN = new RegExp(
+  '\\b(' + [
+    'student.?evaluation|grading|exam.?scoring|exam.?proctor',
+    'admission|enrollment|school.?assignment',
+    'academic.?assessment|learning.?assessment',
+    'vocational.?training|apprenticeship',
+  ].join('|') + ')\\b',
+  'i',
+);
+
+// EU AI Act Annex III §6 — law enforcement.
+const LAW_ENFORCEMENT_PATTERN = new RegExp(
+  '\\b(' + [
+    'law.?enforcement|police|prosecut',
+    'criminal.?investigation|criminal.?justice',
+    'border|immigration|asylum',
+    'parole|recidivism|sentenc',
+    'predictive.?policing',
+  ].join('|') + ')\\b',
+  'i',
+);
 
 function isBusinessSystem(s: SystemAssessment): boolean {
   const id = s.systemId.toLowerCase();
@@ -118,9 +201,18 @@ export function detectSignals(
     /\b(data|record|information|system|care|provider)\b/i.test(allText);
   const hasHealth = hasMedicalTerms || hasHealthInContext;
 
-  const hasEmploymentDecisions = /\b(hir|recruit|employ|candidate|resume|applicant)\b/i.test(
+  const hasEmploymentDecisions = /\b(hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?)\b/i.test(
     (decisionMakingDetails ?? '') + ' ' + allText,
   );
+
+  const combinedText = (decisionMakingDetails ?? '') + ' ' + allText;
+
+  const hasCoveredEntitySignal = COVERED_ENTITY_PATTERN.test(allText);
+  const hasConsequentialDecisionSignal = CONSEQUENTIAL_DECISION_PATTERN.test(combinedText);
+  const hasSignificantDecisionSignal = SIGNIFICANT_DECISION_PATTERN.test(combinedText);
+  const hasBiometricSignal = BIOMETRIC_PATTERN.test(allText);
+  const isEducationAssessmentContext = EDUCATION_ASSESSMENT_PATTERN.test(combinedText);
+  const isLawEnforcementContext = LAW_ENFORCEMENT_PATTERN.test(combinedText);
 
   const businessSystems = systems.filter(isBusinessSystem);
 
@@ -158,6 +250,12 @@ export function detectSignals(
     hasOrgBlastWithWrites,
     decisionImpact,
     businessSystems,
+    hasCoveredEntitySignal,
+    hasConsequentialDecisionSignal,
+    hasSignificantDecisionSignal,
+    hasBiometricSignal,
+    isEducationAssessmentContext,
+    isLawEnforcementContext,
   };
 }
 

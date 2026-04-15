@@ -366,3 +366,102 @@ describe('detectSignals', () => {
     expect(s.decisionImpact).toBe('high');
   });
 });
+
+describe('detectSignals — new AAP-31 signals', () => {
+  describe('hasCoveredEntitySignal (HIPAA)', () => {
+    it('matches EHR/EMR vocabulary', () => {
+      const s = detectSignals(
+        [],
+        tx(['We integrate with EHR systems and process PHI']),
+        false,
+      );
+      expect(s.hasCoveredEntitySignal).toBe(true);
+    });
+
+    it('matches "covered entity" phrase', () => {
+      const s = detectSignals([], tx(['We are a HIPAA covered entity']), false);
+      expect(s.hasCoveredEntitySignal).toBe(true);
+    });
+
+    it('does not fire on generic "health data"', () => {
+      const s = detectSignals([], tx(['We process user health data']), false);
+      expect(s.hasCoveredEntitySignal).toBe(false);
+    });
+
+    it('does not fire on wellness/fitness context', () => {
+      const s = detectSignals([], tx(['fitness tracker wellness app']), false);
+      expect(s.hasCoveredEntitySignal).toBe(false);
+    });
+  });
+
+  describe('hasConsequentialDecisionSignal (Colorado 8 domains)', () => {
+    it('matches employment morphological variants', () => {
+      expect(detectSignals([], tx(['hire candidates']), true, 'screening applicants').hasConsequentialDecisionSignal).toBe(true);
+      expect(detectSignals([], tx([]), true, 'hiring').hasConsequentialDecisionSignal).toBe(true);
+    });
+    it('matches credit/lending', () => {
+      expect(detectSignals([], tx(['loan underwriting']), true, 'credit decisions').hasConsequentialDecisionSignal).toBe(true);
+    });
+    it('matches housing', () => {
+      expect(detectSignals([], tx([]), true, 'rental application decisions').hasConsequentialDecisionSignal).toBe(true);
+    });
+    it('matches insurance', () => {
+      expect(detectSignals([], tx([]), true, 'insurance claim denial').hasConsequentialDecisionSignal).toBe(true);
+    });
+    it('does not fire on generic customer service', () => {
+      expect(detectSignals([], tx(['answer customer questions']), true, 'reply to queries').hasConsequentialDecisionSignal).toBe(false);
+    });
+  });
+
+  describe('hasSignificantDecisionSignal (CCPA 5 domains)', () => {
+    it('matches CCPA significant-decision domains', () => {
+      expect(detectSignals([], tx([]), true, 'credit scoring').hasSignificantDecisionSignal).toBe(true);
+      expect(detectSignals([], tx([]), true, 'school admission').hasSignificantDecisionSignal).toBe(true);
+    });
+  });
+
+  describe('hasBiometricSignal (Annex III §1)', () => {
+    it('fires on facial recognition', () => {
+      expect(detectSignals([], tx(['facial recognition matching']), false).hasBiometricSignal).toBe(true);
+    });
+    it('fires on voiceprint', () => {
+      expect(detectSignals([], tx(['voiceprint analysis']), false).hasBiometricSignal).toBe(true);
+    });
+    it('does not fire on generic biometrics-adjacent language', () => {
+      expect(detectSignals([], tx(['user photo upload']), false).hasBiometricSignal).toBe(false);
+    });
+  });
+
+  describe('isEducationAssessmentContext (Annex III §3)', () => {
+    it('fires on grading', () => {
+      expect(detectSignals([], tx([]), true, 'automated grading of student submissions').isEducationAssessmentContext).toBe(true);
+    });
+    it('fires on admission decisions', () => {
+      expect(detectSignals([], tx([]), true, 'university admission decisions').isEducationAssessmentContext).toBe(true);
+    });
+  });
+
+  describe('isLawEnforcementContext (Annex III §6)', () => {
+    it('fires on police/law enforcement', () => {
+      expect(detectSignals([], tx(['law enforcement investigations']), true, 'crime prediction').isLawEnforcementContext).toBe(true);
+    });
+    it('fires on parole/sentencing', () => {
+      expect(detectSignals([], tx([]), true, 'parole recommendations').isLawEnforcementContext).toBe(true);
+    });
+  });
+});
+
+describe('hasEmploymentDecisions — plural/gerund matching (regex bug fix)', () => {
+  it('matches "hiring" (gerund)', () => {
+    expect(detectSignals([], tx([]), true, 'hiring decisions').hasEmploymentDecisions).toBe(true);
+  });
+  it('matches "candidates" (plural)', () => {
+    expect(detectSignals([], tx(['screen candidates for positions']), true, 'applicants').hasEmploymentDecisions).toBe(true);
+  });
+  it('matches "applicants" and "resumes"', () => {
+    expect(detectSignals([], tx([]), true, 'review applicants and resumes').hasEmploymentDecisions).toBe(true);
+  });
+  it('matches "recruiting/recruiter"', () => {
+    expect(detectSignals([], tx(['our recruiter uses this']), true, 'recruiting').hasEmploymentDecisions).toBe(true);
+  });
+});
