@@ -573,7 +573,6 @@ export function toLegacyJurisdictions(bundle: CategorizedCompliance): {
 
     // Voluntary frameworks sit under every jurisdiction.
     if (flag.tier === 'voluntary') {
-      // ICO AI Toolkit is UK-flavoured voluntary — still useful EU-wide.
       eu.push(flag);
       us.push(flag);
       uk.push(flag);

@@ -66,7 +66,7 @@ export interface Framework {
    * Modelled as a Jurisdiction[] (not a boolean) because mandatoriness is
    * jurisdiction-scoped — GDPR is mandatory in the EU & UK but not the US.
    *
-   * US-state-specific laws (Colorado AI Act, NYC LL144, CCPA/CPRA) use `['US']`
+   * US-state-specific laws (Colorado AI Act, CCPA/CPRA) use `['US']`
    * with an explanatory `scopeNote` since we don't model individual US states
    * as first-class jurisdictions.
    */
@@ -122,7 +122,7 @@ export interface ControlMapping {
  * is materially updated so downstream consumers can detect staleness.
  *
  * Source: AAP-30 research, extended under AAP-31 to restore the
- * jurisdiction-specific mandatory frameworks (Colorado AI Act, NYC LL144,
- * HIPAA, CCPA/CPRA, UK GDPR/DPA 2018, ICO AI Toolkit).
+ * jurisdiction-specific mandatory frameworks (Colorado AI Act,
+ * HIPAA, CCPA/CPRA, UK GDPR/DPA 2018).
  */
 export const MAPPING_VERSION = 'aap-31.2026-04-15' as const;

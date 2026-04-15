@@ -5,8 +5,8 @@
  * finding activates across every registered framework (mandatory + voluntary).
  *
  * AAP-31 extension: entries for the restored jurisdiction-specific mandatory
- * frameworks (Colorado AI Act, NYC LL144, HIPAA, CCPA/CPRA, UK GDPR/DPA 2018,
- * ICO AI Toolkit) sit alongside the original AAP-30 set. The mapper's signal
+ * frameworks (Colorado AI Act, HIPAA, CCPA/CPRA, UK GDPR/DPA 2018)
+ * sit alongside the original AAP-30 set. The mapper's signal
  * detection decides which of these are included for any given audit.
  *
  * Mappings are INDICATIVE — they surface which framework clauses a finding

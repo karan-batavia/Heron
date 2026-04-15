@@ -456,8 +456,8 @@ function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
   const methodology = `### Methodology
 
 Risk findings are mapped onto control IDs from EU AI Act, GDPR, UK GDPR / DPA 2018,
-Colorado AI Act, NYC Local Law 144, HIPAA, CCPA/CPRA, NIST AI RMF 1.0,
-ISO/IEC 23894, ISO/IEC 42001, SOC 2 TSC, and the ICO AI Toolkit. Mappings are
+Colorado AI Act, HIPAA, CCPA/CPRA, NIST AI RMF 1.0,
+ISO/IEC 23894, ISO/IEC 42001, and SOC 2 TSC. Mappings are
 **indicative** — they surface which framework clauses a finding typically activates,
 not a certification that the controls are satisfied. Always validate with qualified
 counsel and your compliance team.
@@ -467,7 +467,7 @@ counsel and your compliance team.
   best-practice guidance.
 - Findings are grouped into four **risk categories**: Privacy, Intellectual
   Property, Consumer Protection, and Sector-Specific obligations.
-- US-state-specific statutes (Colorado AI Act, NYC LL144, CCPA/CPRA) and the
+- US-state-specific statutes (Colorado AI Act, CCPA/CPRA) and the
   US sector-specific HIPAA rule fire only when the detected signals match their
   jurisdictional / sector scope.
 ${
@@ -505,11 +505,11 @@ ${renderFlags(compliance.uk)}`;
 
 ${methodology}
 
-### Mandatory Law (EU AI Act, GDPR, UK GDPR/DPA 2018, Colorado AI Act, NYC LL144, HIPAA, CCPA/CPRA)
+### Mandatory Law (EU AI Act, GDPR, UK GDPR/DPA 2018, Colorado AI Act, HIPAA, CCPA/CPRA)
 
 ${renderCategorizedBucket(mandatory)}
 
-### Voluntary Frameworks (NIST AI RMF, ISO 23894/42001, SOC 2, ICO AI Toolkit)
+### Voluntary Frameworks (NIST AI RMF, ISO 23894/42001, SOC 2)
 
 ${renderCategorizedBucket(voluntary)}
 
