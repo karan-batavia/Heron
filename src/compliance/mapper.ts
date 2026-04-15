@@ -356,6 +356,29 @@ function frameworkApplies(
   }
 }
 
+// ─── Jurisdictional disclaimer appender ────────────────────────────────────
+
+function disclaimerFor(frameworkId: FrameworkId, baseDescription: string): string {
+  switch (frameworkId) {
+    case 'colorado-ai-act':
+      return `${baseDescription} Applies only if you do business in Colorado or make consequential decisions about Colorado residents. Effective 2026-06-30 (delayed from 2026-02-01 via SB 25B-004).`;
+    case 'ccpa-cpra':
+      return `${baseDescription} Applies if business meets CCPA thresholds (>$26,625,000 annual gross revenue per § 1798.140(d)(1)(A) CPI-adjusted via § 1798.199.95(d); OR ≥100K CA consumers/households; OR ≥50% revenue from selling/sharing PI) AND processes data of California residents. ADMT operational obligations effective 2027-01-01.`;
+    case 'hipaa':
+      return `${baseDescription} Applies only if you are a HIPAA covered entity (provider, health plan, clearinghouse) or business associate. Non-covered health apps fall under FTC Health Breach Notification Rule (16 CFR Part 318).`;
+    case 'uk-gdpr-dpa-2018':
+      return `${baseDescription} Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).`;
+    case 'gdpr':
+      return `${baseDescription} Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).`;
+    case 'eu-ai-act':
+      return `${baseDescription} Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.`;
+    case 'eu-ai-act-high-risk':
+      return `${baseDescription} Your deployment signals match an Annex III category, classifying this as high-risk. Full obligations effective 2026-08-02. Art. 6(3) offers a narrow exemption (4 enumerated conditions AND no material outcome influence); profiling of natural persons is always high-risk across ALL Annex III categories — Art. 6(3) does not exempt profiling.`;
+    default:
+      return baseDescription;
+  }
+}
+
 // ─── Per-finding description builder ───────────────────────────────────────
 
 function describeFinding(
@@ -519,13 +542,14 @@ export function mapFindingsToRiskCategories(
 
       const framework = FRAMEWORKS[frameworkId];
       const controlIds = controls.map((c) => c.controlId);
-      const { severity, description } = describeFinding(
+      const { severity, description: baseDescription } = describeFinding(
         mapping.findingType,
         framework,
         controlIds,
         signals,
         input.decisionMakingDetails,
       );
+      const description = disclaimerFor(frameworkId, baseDescription);
 
       const controlsLabel = controlIds.join(', ');
       const flag: TypedRegulatoryFlag = {

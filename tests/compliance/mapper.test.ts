@@ -635,3 +635,72 @@ describe('Control-mapping citations — every row carries a note', () => {
     }
   });
 });
+
+describe('Flag disclaimers — statute jurisdictional caveats', () => {
+  function findingWith(input: MapperInput, frameworkId: string) {
+    const r = mapFindingsToRiskCategories(input);
+    return r.all.find((f) => f.frameworkId === frameworkId);
+  }
+
+  it('Colorado flag description names Colorado business/residents test', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx(['hire candidates']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'screen candidates for hiring',
+    }, 'colorado-ai-act');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/Colorado/i);
+    expect(flag!.description).toMatch(/2026-06-30|June 30, 2026/);
+  });
+
+  it('CCPA flag description names CCPA thresholds', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx(['name email phone PII']),
+    }, 'ccpa-cpra');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/26,625,000|CCPA threshold/i);
+    expect(flag!.description).toMatch(/California resident/i);
+  });
+
+  it('HIPAA flag description names covered-entity test + HBNR fallback', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx(['EHR patient records']),
+    }, 'hipaa');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/covered entity/i);
+    expect(flag!.description).toMatch(/FTC Health Breach Notification Rule|HBNR/i);
+  });
+
+  it('UK GDPR flag description names targeting/monitoring test', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx(['name email phone PII']),
+    }, 'uk-gdpr-dpa-2018');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/UK data subjects|UK.based behaviour/i);
+  });
+
+  it('EU AI Act base flag description names EU market/output test', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx(['name email PII']),
+    }, 'eu-ai-act');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/EU market|outputs are used in the EU/i);
+  });
+
+  it('EU AI Act high-risk flag description references Annex III + profiling disclaimer', () => {
+    const flag = findingWith({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'screen candidates for hiring',
+    }, 'eu-ai-act-high-risk');
+    expect(flag).toBeDefined();
+    expect(flag!.description).toMatch(/Annex III/i);
+    expect(flag!.description).toMatch(/profiling/i);
+  });
+});
