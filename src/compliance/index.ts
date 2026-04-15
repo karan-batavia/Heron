@@ -15,7 +15,6 @@ export {
   classifyDecisionImpact,
   detectSignals,
   mapFindingsToRiskCategories,
-  toLegacyJurisdictions,
 } from './mapper.js';
 export type {
   CategorizedBucket,

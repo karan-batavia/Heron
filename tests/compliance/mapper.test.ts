@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   mapFindingsToRiskCategories,
-  toLegacyJurisdictions,
   detectSignals,
   classifyDecisionImpact,
 } from '../../src/compliance/mapper.js';
@@ -271,25 +270,6 @@ describe('mapFindingsToRiskCategories', () => {
     expect(hipaa).toBeDefined();
     expect(hipaa!.mandatoryIn).toEqual(['US']);
     expect(hipaa!.scopeNote).toBeTruthy();
-  });
-});
-
-// ─── toLegacyJurisdictions ──────────────────────────────────────────────────
-
-describe('toLegacyJurisdictions', () => {
-  it('routes US-specific mandatory flags into us bucket', () => {
-    const bundle = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['EHR patient health records, names, ssn']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screens candidates for hiring and rejects unqualified applicants',
-    });
-    const { eu, us, uk } = toLegacyJurisdictions(bundle);
-    expect(us.some((f) => f.frameworkId === 'hipaa')).toBe(true);
-    expect(us.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
-    expect(us.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(true);
-    expect(uk.some((f) => f.frameworkId === 'uk-gdpr-dpa-2018')).toBe(true);
-    expect(eu.some((f) => f.frameworkId === 'gdpr')).toBe(true);
   });
 });
 
@@ -702,5 +682,12 @@ describe('Flag disclaimers — statute jurisdictional caveats', () => {
     expect(flag).toBeDefined();
     expect(flag!.description).toMatch(/Annex III/i);
     expect(flag!.description).toMatch(/profiling/i);
+  });
+});
+
+describe('Legacy removal', () => {
+  it('mapper module does not export toLegacyJurisdictions', async () => {
+    const m = await import('../../src/compliance/mapper.js');
+    expect((m as Record<string, unknown>).toLegacyJurisdictions).toBeUndefined();
   });
 });

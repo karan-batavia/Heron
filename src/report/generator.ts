@@ -7,7 +7,6 @@ import type { LLMClient } from '../llm/client.js';
 import * as logger from '../util/logger.js';
 import {
   mapFindingsToRiskCategories,
-  toLegacyJurisdictions,
 } from '../compliance/mapper.js';
 
 export interface GenerateReportOptions {
@@ -120,7 +119,10 @@ export function computeRegulatoryFlags(
     decisionMakingDetails: analysis.decisionMakingDetails,
   });
 
-  const { eu, us, uk } = toLegacyJurisdictions(bundle);
+  // Temporary inline projection — full removal in Task 11
+  const eu = bundle.all.filter(f => f.mandatoryIn.includes('EU') || f.tier === 'voluntary');
+  const uk = bundle.all.filter(f => f.mandatoryIn.includes('UK') || f.tier === 'voluntary');
+  const us = bundle.all.filter(f => f.mandatoryIn.includes('US') || f.tier === 'voluntary');
 
   return {
     eu,

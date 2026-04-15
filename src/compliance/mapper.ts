@@ -580,35 +580,3 @@ export function mapFindingsToRiskCategories(
     all,
   };
 }
-
-// ─── Backward-compat jurisdiction projection ───────────────────────────────
-
-/**
- * Projects categorized flags back onto the legacy {eu, us, uk} shape so
- * the existing `RegulatoryCompliance` consumers (CLI, templates) keep
- * working until they migrate to the categorized layout.
- */
-export function toLegacyJurisdictions(bundle: CategorizedCompliance): {
-  eu: TypedRegulatoryFlag[];
-  us: TypedRegulatoryFlag[];
-  uk: TypedRegulatoryFlag[];
-} {
-  const eu: TypedRegulatoryFlag[] = [];
-  const us: TypedRegulatoryFlag[] = [];
-  const uk: TypedRegulatoryFlag[] = [];
-
-  for (const flag of bundle.all) {
-    if (flag.mandatoryIn.includes('EU')) eu.push(flag);
-    if (flag.mandatoryIn.includes('UK')) uk.push(flag);
-    if (flag.mandatoryIn.includes('US')) us.push(flag);
-
-    // Voluntary frameworks sit under every jurisdiction.
-    if (flag.tier === 'voluntary') {
-      eu.push(flag);
-      us.push(flag);
-      uk.push(flag);
-    }
-  }
-
-  return { eu, us, uk };
-}
