@@ -69,12 +69,6 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
         'Requires algorithmic discrimination testing, consumer disclosures, human oversight, annual compliance reviews.',
     },
   ),
-  'nyc-ll144': mandatory('nyc-ll144', 'NYC Local Law 144', ['US'], {
-    scopeNote:
-      'Automated employment decision tools used for candidates/employees in New York City. Penalties: $500–$1,500/day.',
-    summary:
-      'Annual bias audit, public disclosure of audit results, candidate notification before AI assessment.',
-  }),
   hipaa: mandatory('hipaa', 'HIPAA', ['US'], {
     scopeNote:
       'Applies only to covered entities (providers, health plans, clearinghouses) and their business associates.',
@@ -107,11 +101,6 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
     'soc-2',
     'SOC 2',
     'AICPA Trust Services Criteria (Security, Availability, PI, Confidentiality, Privacy).',
-  ),
-  'ico-ai-toolkit': voluntary(
-    'ico-ai-toolkit',
-    'ICO AI Risk Toolkit',
-    'UK Information Commissioner\'s Office AI accountability & risk-management guidance.',
   ),
 };
 

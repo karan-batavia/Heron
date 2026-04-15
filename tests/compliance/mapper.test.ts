@@ -50,13 +50,11 @@ describe('frameworks registry', () => {
     expect(ids).toContain('iso-23894');
     expect(ids).toContain('iso-42001');
     expect(ids).toContain('soc-2');
-    // AAP-31 restored
+    // AAP-31 restored (nyc-ll144 and ico-ai-toolkit removed from v1 scope)
     expect(ids).toContain('uk-gdpr-dpa-2018');
     expect(ids).toContain('colorado-ai-act');
-    expect(ids).toContain('nyc-ll144');
     expect(ids).toContain('hipaa');
     expect(ids).toContain('ccpa-cpra');
-    expect(ids).toContain('ico-ai-toolkit');
   });
 
   it('uses Jurisdiction[] for mandatoriness, not booleans', () => {
@@ -67,14 +65,11 @@ describe('frameworks registry', () => {
     expect(FRAMEWORKS.gdpr.mandatoryIn).toContain('EU');
     expect(FRAMEWORKS['uk-gdpr-dpa-2018'].mandatoryIn).toContain('UK');
     expect(FRAMEWORKS['nist-ai-rmf'].mandatoryIn).toEqual([]);
-    expect(FRAMEWORKS['ico-ai-toolkit'].mandatoryIn).toEqual([]);
   });
 
   it('models US-state laws as US with a scopeNote', () => {
     expect(FRAMEWORKS['colorado-ai-act'].mandatoryIn).toEqual(['US']);
     expect(FRAMEWORKS['colorado-ai-act'].scopeNote).toMatch(/colorado/i);
-    expect(FRAMEWORKS['nyc-ll144'].mandatoryIn).toEqual(['US']);
-    expect(FRAMEWORKS['nyc-ll144'].scopeNote).toMatch(/new york|nyc/i);
     expect(FRAMEWORKS['hipaa'].mandatoryIn).toEqual(['US']);
     expect(FRAMEWORKS['hipaa'].scopeNote).toMatch(/covered entit/i);
     expect(FRAMEWORKS['ccpa-cpra'].mandatoryIn).toEqual(['US']);
@@ -87,7 +82,6 @@ describe('frameworks registry', () => {
     expect(m).toContain('eu-ai-act');
     expect(m).toContain('colorado-ai-act');
     expect(v).toContain('nist-ai-rmf');
-    expect(v).toContain('ico-ai-toolkit');
     // No overlap
     for (const id of m) expect(v).not.toContain(id);
   });
@@ -129,11 +123,10 @@ describe('control-mappings table', () => {
     expect(ids).toContain('uk-gdpr-dpa-2018');
   });
 
-  it('decisions-about-people activates Colorado AI Act + NYC LL144 + ICO Toolkit', () => {
+  it('decisions-about-people activates Colorado AI Act and CCPA', () => {
     const ids = CONTROL_MAPPINGS['decisions-about-people'].controls.map((c) => c.frameworkId);
     expect(ids).toContain('colorado-ai-act');
-    expect(ids).toContain('nyc-ll144');
-    expect(ids).toContain('ico-ai-toolkit');
+    expect(ids).toContain('ccpa-cpra');
   });
 });
 
@@ -203,24 +196,6 @@ describe('mapFindingsToRiskCategories', () => {
     expect(hiring.frameworksActivated).toContain('colorado-ai-act');
   });
 
-  it('fires NYC LL144 only for employment-related decisions', () => {
-    const credit = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['credit decisions']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'Approves or denies loan applications based on credit score',
-    });
-    expect(credit.frameworksActivated).not.toContain('nyc-ll144');
-
-    const hiring = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['hires candidates']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'Screens candidates and recommends hiring decisions for recruiters',
-    });
-    expect(hiring.frameworksActivated).toContain('nyc-ll144');
-  });
-
   it('fires CCPA for sensitive PII and ADMT', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
@@ -237,16 +212,6 @@ describe('mapFindingsToRiskCategories', () => {
       transcript: tx(['Processes customer name, email, and phone']),
     });
     expect(r.frameworksActivated).toContain('uk-gdpr-dpa-2018');
-  });
-
-  it('fires ICO AI Toolkit when decisions or sensitive data are present', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['name, email PII via the api']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screens candidates and rejects unqualified applicants',
-    });
-    expect(r.frameworksActivated).toContain('ico-ai-toolkit');
   });
 
   it('places restored mandatory frameworks in the mandatory bucket', () => {
@@ -266,7 +231,6 @@ describe('mapFindingsToRiskCategories', () => {
     );
     expect(mandIds.has('hipaa')).toBe(true);
     expect(mandIds.has('colorado-ai-act')).toBe(true);
-    expect(mandIds.has('nyc-ll144')).toBe(true);
     expect(mandIds.has('ccpa-cpra')).toBe(true);
     expect(mandIds.has('uk-gdpr-dpa-2018')).toBe(true);
   });
@@ -282,11 +246,6 @@ describe('mapFindingsToRiskCategories', () => {
     // Colorado AI Act → consumer-protection (high-impact decisions)
     expect(
       r.mandatory['consumer-protection'].some((f) => f.frameworkId === 'colorado-ai-act'),
-    ).toBe(true);
-
-    // NYC LL144 → consumer-protection (employment)
-    expect(
-      r.mandatory['consumer-protection'].some((f) => f.frameworkId === 'nyc-ll144'),
     ).toBe(true);
 
     // HIPAA → sector-specific (health)
@@ -326,7 +285,6 @@ describe('toLegacyJurisdictions', () => {
     const { eu, us, uk } = toLegacyJurisdictions(bundle);
     expect(us.some((f) => f.frameworkId === 'hipaa')).toBe(true);
     expect(us.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
-    expect(us.some((f) => f.frameworkId === 'nyc-ll144')).toBe(true);
     expect(us.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(true);
     expect(uk.some((f) => f.frameworkId === 'uk-gdpr-dpa-2018')).toBe(true);
     expect(eu.some((f) => f.frameworkId === 'gdpr')).toBe(true);
@@ -453,6 +411,27 @@ describe('detectSignals — new AAP-31 signals', () => {
     it('fires on parole/sentencing', () => {
       expect(detectSignals([], tx([]), true, 'parole recommendations').isLawEnforcementContext).toBe(true);
     });
+  });
+});
+
+describe('Framework registry — deprecated entries removed', () => {
+  it('does not include nyc-ll144', () => {
+    expect(FRAMEWORKS).not.toHaveProperty('nyc-ll144');
+  });
+  it('does not include ico-ai-toolkit', () => {
+    expect(FRAMEWORKS).not.toHaveProperty('ico-ai-toolkit');
+  });
+  it('no CONTROL_MAPPINGS reference nyc-ll144', () => {
+    for (const mapping of Object.values(CONTROL_MAPPINGS)) {
+      const ids = mapping.controls.map((c) => c.frameworkId);
+      expect(ids).not.toContain('nyc-ll144');
+    }
+  });
+  it('no CONTROL_MAPPINGS reference ico-ai-toolkit', () => {
+    for (const mapping of Object.values(CONTROL_MAPPINGS)) {
+      const ids = mapping.controls.map((c) => c.frameworkId);
+      expect(ids).not.toContain('ico-ai-toolkit');
+    }
   });
 });
 

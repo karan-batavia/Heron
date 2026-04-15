@@ -107,8 +107,6 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('ccpa-cpra', '§1798.121', 'Opt-out for sensitive personal information.'),
       c('hipaa', '§164.502', 'PHI minimum-necessary standard (if covered entity).'),
       c('hipaa', '§164.308', 'Administrative safeguards (Security Rule).'),
-      c('ico-ai-toolkit', 'Lawfulness & Fairness'),
-      c('ico-ai-toolkit', 'Data Minimisation'),
     ],
   },
 
@@ -195,11 +193,7 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('uk-gdpr-dpa-2018', 'Art. 22', 'UK: right not to be subject to solely automated decisions.'),
       c('colorado-ai-act', 'SB 24-205 §6-1-1702', 'Algorithmic discrimination duty.'),
       c('colorado-ai-act', 'SB 24-205 §6-1-1703', 'Consumer disclosures + human oversight.'),
-      c('nyc-ll144', '§20-870', 'Automated employment decision tool definition.'),
-      c('nyc-ll144', '§20-871', 'Bias audit + candidate notification.'),
       c('ccpa-cpra', '§1798.185(a)(16)', 'ADMT regulations (effective 1 Jan 2027).'),
-      c('ico-ai-toolkit', 'Individual Rights'),
-      c('ico-ai-toolkit', 'Accountability & Governance'),
     ],
   },
 };

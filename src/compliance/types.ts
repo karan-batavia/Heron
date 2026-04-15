@@ -30,11 +30,9 @@ export type FrameworkTier = (typeof FRAMEWORK_TIERS)[number];
 /**
  * Every framework carried by the AAP-31 mapping. This list is the union of
  * the original AAP-30 set (EU AI Act, GDPR, NIST AI RMF, ISO 23894/42001,
- * SOC 2) AND the jurisdiction-specific frameworks that were deleted in the
- * prior attempt (Colorado AI Act, NYC Local Law 144, HIPAA, CCPA, UK GDPR,
- * ICO AI Toolkit). Restoring them means the Privacy / Consumer Protection /
- * Sector-Specific buckets have real content for US-California, US-Colorado,
- * US-New-York, and UK readers.
+ * SOC 2) AND the jurisdiction-specific frameworks restored under AAP-31
+ * (Colorado AI Act, HIPAA, CCPA/CPRA, UK GDPR/DPA 2018). NYC LL144 and
+ * ICO AI Toolkit are excluded from v1 scope (deferred — see AAP-40).
  */
 export const FRAMEWORK_IDS = [
   // ── Mandatory, EU-wide ───────────────────────────────────────────────────
@@ -44,7 +42,6 @@ export const FRAMEWORK_IDS = [
   'uk-gdpr-dpa-2018',
   // ── Mandatory, US-state or US-sector specific ────────────────────────────
   'colorado-ai-act', // SB 24-205 — Colorado consequential decisions
-  'nyc-ll144',       // NYC Local Law 144 — automated employment decision tools
   'hipaa',           // US health sector (covered entities / business associates)
   'ccpa-cpra',       // California Consumer Privacy Act / CPRA
   // ── Voluntary / best-practice ────────────────────────────────────────────
@@ -52,7 +49,6 @@ export const FRAMEWORK_IDS = [
   'iso-23894',
   'iso-42001',
   'soc-2',
-  'ico-ai-toolkit',  // UK ICO AI accountability / risk toolkit (guidance, not statute)
 ] as const;
 export type FrameworkId = (typeof FRAMEWORK_IDS)[number];
 

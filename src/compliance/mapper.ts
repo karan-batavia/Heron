@@ -8,7 +8,7 @@
  * this directly.
  *
  * The "framework gating" logic decides whether a jurisdiction-specific
- * statute (e.g. Colorado AI Act, NYC LL144, HIPAA, CCPA) applies to the
+ * statute (e.g. Colorado AI Act, HIPAA, CCPA) applies to the
  * currently-detected signals. Unlike generic frameworks (which always fire
  * whenever the finding is active), these narrow statutes only fire when the
  * signals match their jurisdictional scope — otherwise we'd spam the report
@@ -309,11 +309,10 @@ function emptyBucket(): CategorizedBucket {
 /**
  * Decides whether a framework should fire for a given finding + signal set.
  *
- * Generic frameworks (EU AI Act, GDPR, UK GDPR, NIST AI RMF, ISO, SOC 2,
- * ICO Toolkit) always fire when the finding itself fires. Narrow statutes
- * (Colorado AI Act, NYC LL144, HIPAA, CCPA) only fire when the signals
- * match their scope — otherwise the report gets spammed with US-state
- * flags for every audit regardless of context.
+ * Generic frameworks (EU AI Act, GDPR, UK GDPR, NIST AI RMF, ISO, SOC 2)
+ * always fire when the finding itself fires. Narrow statutes (Colorado AI Act,
+ * HIPAA, CCPA) only fire when the signals match their scope — otherwise the
+ * report gets spammed with US-state flags for every audit regardless of context.
  */
 function frameworkApplies(
   frameworkId: FrameworkId,
@@ -330,14 +329,6 @@ function frameworkApplies(
             signals.decisionImpact === 'unclear')) ||
         (findingType === 'regulatory-flags' &&
           signals.decisionImpact !== 'none')
-      );
-
-    case 'nyc-ll144':
-      // Strictly employment-related decisions.
-      return (
-        findingType === 'decisions-about-people' &&
-        signals.decisionImpact === 'high' &&
-        signals.hasEmploymentDecisions
       );
 
     case 'hipaa':
