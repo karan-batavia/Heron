@@ -394,6 +394,18 @@ describe('detectSignals — new AAP-31 signals', () => {
       expect(detectSignals([], tx([]), true, 'parole recommendations').isLawEnforcementContext).toBe(true);
     });
   });
+
+  describe('hasEssentialServicesSignal (Annex III §5)', () => {
+    it('fires on credit scoring', () => {
+      expect(detectSignals([], tx([]), true, 'credit scoring for loan applicants').hasEssentialServicesSignal).toBe(true);
+    });
+    it('fires on public benefits eligibility', () => {
+      expect(detectSignals([], tx(['welfare benefit eligibility determination']), true).hasEssentialServicesSignal).toBe(true);
+    });
+    it('does not fire on generic org decisions', () => {
+      expect(detectSignals([], tx(['internal workforce planning decisions']), true).hasEssentialServicesSignal).toBe(false);
+    });
+  });
 });
 
 describe('Framework registry — deprecated entries removed', () => {
@@ -603,6 +615,31 @@ describe('EU AI Act — two-level gating', () => {
       decisionMakingDetails: 'approve refunds based on policy',
     });
     expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(false);
+  });
+
+  it('high-risk fires on essential services credit scoring (Annex III §5)', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'approve or deny consumer loan applications based on credit scoring',
+    });
+    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+  });
+
+  it('high-risk does NOT duplicate across all finding types for law enforcement', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['police criminal investigation']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'predictive policing recidivism assessment',
+    });
+    const hrFlags = r.all.filter((f) => f.frameworkId === 'eu-ai-act-high-risk');
+    // Should fire only on decisions-about-people and/or regulatory-flags findings,
+    // NOT on every finding type (excessive-access, write-risk, etc.)
+    for (const f of hrFlags) {
+      expect(['decisions-about-people', 'regulatory-flags']).toContain(f.triggeredBy);
+    }
   });
 });
 

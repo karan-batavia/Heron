@@ -94,6 +94,7 @@ export interface ComplianceSignals {
   hasBiometricSignal: boolean;
   isEducationAssessmentContext: boolean;
   isLawEnforcementContext: boolean;
+  hasEssentialServicesSignal: boolean;  // EU AI Act Annex III §5
 }
 
 // Colorado SB 24-205 §6-1-1701(3): 8 enumerated consequential-decision domains.
@@ -169,6 +170,21 @@ const LAW_ENFORCEMENT_PATTERN = new RegExp(
   'i',
 );
 
+// EU AI Act Annex III §5 — access to essential public/private services.
+// §5(a) public assistance benefits eligibility, §5(b) credit scoring/creditworthiness,
+// §5(c) emergency service dispatch, §5(d) health/life insurance risk assessment.
+// Note: patterns ending in mid-word stems (e.g. credit.?scor in "scoring") must not
+// use a trailing \b — use \b only at the leading boundary and allow suffix continuation.
+const ESSENTIAL_SERVICES_PATTERN = new RegExp(
+  '(?:' + [
+    '\\bcredit(?:\\s*scor|worthiness|\\s*rating)',  // §5(b) credit scoring / creditworthiness
+    '\\b(?:benefit|eligib|welfare|social\\s*service|public\\s*assistance)\\b',
+    '\\b(?:emergency|911|triage|dispatch)\\b',
+    '\\b(?:life\\s*insur|health\\s*insur|insur(?:ance)?\\s*pric|insur(?:ance)?\\s*risk|underwrit)',
+  ].join('|') + ')',
+  'i',
+);
+
 function isBusinessSystem(s: SystemAssessment): boolean {
   const id = s.systemId.toLowerCase();
   if (/\bheron\b/.test(id)) return false;
@@ -222,6 +238,7 @@ export function detectSignals(
   const hasBiometricSignal = BIOMETRIC_PATTERN.test(allText);
   const isEducationAssessmentContext = EDUCATION_ASSESSMENT_PATTERN.test(combinedText);
   const isLawEnforcementContext = LAW_ENFORCEMENT_PATTERN.test(combinedText);
+  const hasEssentialServicesSignal = ESSENTIAL_SERVICES_PATTERN.test(combinedText);
 
   const businessSystems = systems.filter(isBusinessSystem);
 
@@ -265,6 +282,7 @@ export function detectSignals(
     hasBiometricSignal,
     isEducationAssessmentContext,
     isLawEnforcementContext,
+    hasEssentialServicesSignal,
   };
 }
 
@@ -335,8 +353,10 @@ function frameworkApplies(
         (findingType === 'sensitive-data' && signals.hasSensitivePII && signals.hasBiometricSignal) ||
         ((findingType === 'decisions-about-people' || findingType === 'regulatory-flags') && signals.isEducationAssessmentContext) ||
         (findingType === 'decisions-about-people' && signals.hasEmploymentDecisions && signals.decisionImpact !== 'none') ||
-        (findingType === 'decisions-about-people' && signals.hasOrgBlast && signals.decisionImpact === 'high') ||
-        signals.isLawEnforcementContext
+        // Annex III §5 — Access to essential public/private services
+        (findingType === 'decisions-about-people' && signals.hasEssentialServicesSignal && signals.decisionImpact === 'high') ||
+        // Annex III §6 — Law enforcement (scoped to avoid duplication across all finding types)
+        ((findingType === 'decisions-about-people' || findingType === 'regulatory-flags') && signals.isLawEnforcementContext)
       );
 
     case 'colorado-ai-act':
