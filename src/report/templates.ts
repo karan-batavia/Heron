@@ -1,4 +1,5 @@
 import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, StructuredCompliance, RegulatoryFlag } from './types.js';
+import type { TypedRegulatoryFlag } from '../compliance/mapper.js';
 
 /** Filter out interview/orchestration platforms that aren't real business systems */
 function isBusinessSystem(s: SystemAssessment): boolean {
@@ -18,7 +19,7 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderScopeAndMethodology(report),
     renderSummary(report),
     renderAgentProfile(report),
-    renderFindings(report.risks),
+    renderFindings(report.risks, report.compliance as StructuredCompliance | undefined),
     renderSystems(report.systems),
     renderPositiveFindings(report),
     renderVerdict(report),
@@ -129,9 +130,13 @@ function renderSummary(report: AuditReport): string {
 |------|---------|----------|
 | **${report.overallRiskLevel.toUpperCase()}** | ${systemCount} | ${findingsParts.join(', ')} |`;
 
+  const methodology = report.compliance
+    ? `\n\n> **Risk methodology**: NIST AI RMF (MANAGE 1.2, MEASURE 1.1), ISO/IEC 23894 (Clause 6.3, 6.4.4), EU AI Act Art. 9(2)(b). Mapping version: \`${(report.compliance as StructuredCompliance).mappingVersion}\`.`
+    : '';
+
   return `## Executive Summary
 
-${dashboard}
+${dashboard}${methodology}
 
 ${report.summary}`;
 }
@@ -238,7 +243,53 @@ ${rows.join('\n')}`;
 
 // ─── Findings ───────────────────────────────────────────────────────────────
 
-function renderFindings(risks: Risk[]): string {
+/**
+ * Infer which compliance finding type best matches a risk by keyword matching
+ * on the risk's title and description. Returns the top-matching finding type
+ * or undefined if no strong match.
+ */
+function inferFindingType(risk: Risk): string | undefined {
+  const text = `${risk.title} ${risk.description}`.toLowerCase();
+  if (/permission|scope|access.?control|excessive|least.?privilege|oauth/i.test(text)) return 'excessive-access';
+  if (/write|irreversible|delete|create|modify|append/i.test(text)) return 'write-risk';
+  if (/pii|personal.?data|sensitive|privacy|data.?protection/i.test(text)) return 'sensitive-data';
+  if (/scope.?creep|purpose.?limit|beyond.*need|unnecessary/i.test(text)) return 'scope-creep';
+  if (/classif|decision|scor|rank|profil|bias|discriminat/i.test(text)) return 'decisions-about-people';
+  if (/regulat|compliance|health|hipaa|sector/i.test(text)) return 'regulatory-flags';
+  return undefined;
+}
+
+/**
+ * Get framework basis string for a finding type from the compliance flags.
+ * Returns top 3 mandatory framework controls, formatted as "GDPR Art. 25, SOC 2 CC6.6".
+ */
+function getFrameworkBasis(findingType: string, compliance?: StructuredCompliance): string {
+  if (!compliance) return '—';
+
+  const flags = (compliance.all as TypedRegulatoryFlag[]).filter(
+    (f: TypedRegulatoryFlag) => f.triggeredBy === findingType && f.tier === 'mandatory',
+  );
+
+  if (flags.length === 0) {
+    // Try voluntary if no mandatory
+    const volFlags = (compliance.all as TypedRegulatoryFlag[]).filter(
+      (f: TypedRegulatoryFlag) => f.triggeredBy === findingType,
+    );
+    if (volFlags.length === 0) return '—';
+    return volFlags.slice(0, 3).map(f => `${f.frameworkId === 'eu-ai-act' ? 'EU AI Act' : f.framework.split(' — ')[0]}`).join(', ');
+  }
+
+  // Show top 3 mandatory, framework name + first control ID
+  return flags.slice(0, 3).map(f => {
+    const name = f.frameworkId === 'eu-ai-act' ? 'EU AI Act' :
+                 f.frameworkId === 'eu-ai-act-high-risk' ? 'EU AI Act Annex III' :
+                 f.framework.split(' — ')[0];
+    const ctrl = (f.controlIds ?? [])[0] ?? '';
+    return ctrl ? `${name} ${ctrl}` : name;
+  }).join(', ');
+}
+
+function renderFindings(risks: Risk[], compliance?: StructuredCompliance): string {
   const allRisks = [...risks];
 
   const sorted = allRisks
@@ -246,14 +297,16 @@ function renderFindings(risks: Risk[]): string {
 
   const rows = sorted.map((r, i) => {
     const id = `HERON-${String(i + 1).padStart(3, '0')}`;
+    const findingType = inferFindingType(r);
+    const basis = findingType ? getFrameworkBasis(findingType, compliance) : '—';
     const remediation = r.mitigation ?? '—';
-    return `| ${id} | ${r.severity.toUpperCase()} | ${r.title} | ${r.description} | ${remediation} |`;
+    return `| ${id} | ${r.severity.toUpperCase()} | ${basis} | ${r.title} | ${r.description} | ${remediation} |`;
   }).join('\n');
 
   return `## Findings
 
-| ID | Severity | Finding | Description | Recommendation |
-|----|----------|---------|-------------|----------------|
+| ID | Severity | Framework Basis | Finding | Description | Recommendation |
+|----|----------|-----------------|---------|-------------|----------------|
 ${rows}`;
 }
 
