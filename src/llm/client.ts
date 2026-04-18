@@ -134,7 +134,7 @@ export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
         console.error('');
         console.error('  \x1b[1mNo API key found.\x1b[0m');
         console.error('  Heron needs an LLM key for transcript analysis.');
-        console.error('  Supports: Anthropic (sk-ant-...), OpenAI (sk-...), Gemini (AIza...), or LiteLLM gateway');
+        console.error('  Supports: Anthropic (sk-ant-...), OpenAI (sk-...), Gemini (AIza...), or LiteLLM/OpenRouter gateway');
         console.error('');
         rl.question('  API key: ', (answer) => {
           rl.close();
@@ -156,7 +156,26 @@ export async function createLLMClient(config: LLMConfig): Promise<LLMClient> {
   }
 
   // Gateway support: LiteLLM, OpenRouter, vLLM, Azure OpenAI, etc.
-  const baseURL = process.env.HERON_LLM_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
+  let baseURL = process.env.HERON_LLM_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
+
+  // If key doesn't match known providers and no baseURL set, ask for it interactively
+  const knownPrefix = apiKey.startsWith('sk-ant-') || apiKey.startsWith('sk-') || apiKey.startsWith('AIza');
+  if (!knownPrefix && !baseURL && process.stdin.isTTY) {
+    const { createInterface } = await import('node:readline');
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    const answer = await new Promise<string>(resolve => {
+      console.error('');
+      console.error('  \x1b[33mKey doesn\'t match Anthropic/OpenAI/Gemini format.\x1b[0m');
+      console.error('  If you\'re using a gateway (LiteLLM, OpenRouter, vLLM), enter the base URL.');
+      console.error('  Otherwise press Enter to try as-is.');
+      console.error('');
+      rl.question('  Base URL (e.g. https://your-litellm.example.com): ', (ans) => {
+        rl.close();
+        resolve(ans.trim());
+      });
+    });
+    if (answer) baseURL = answer;
+  }
 
   // Resolve provider: explicit env var > explicit config > auto-detect from key
   // When a baseURL is set and key doesn't match known prefixes, default to 'openai'
