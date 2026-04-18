@@ -90,10 +90,17 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toContain(MAPPING_VERSION);
   });
 
-  it('renders flag with controlIds and indicative mapping qualifier', () => {
+  it('renders flag with controlIds (indicative mapping note in Methodology only)', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toContain('GDPR Art. 6');
-    expect(md).toContain('*(indicative mapping)*');
+    // indicative mapping disclaimer lives in Methodology, not per-line
+    expect(md).toContain('Control mappings are indicative');
+  });
+
+  it('renders Applicability Summary table', () => {
+    const md = renderStructuredCompliance(fakeCompliance);
+    expect(md).toContain('### Applicability Summary');
+    expect(md).toContain('| Framework | Status | Condition |');
   });
 
   it('emits fallback text when a tier has no flags', () => {

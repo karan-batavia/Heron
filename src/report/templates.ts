@@ -447,6 +447,73 @@ const CATEGORIES: Array<{ key: RiskCategory; title: string }> = [
   { key: 'sector-specific', title: 'Sector-Specific' },
 ];
 
+// ─── Applicability Summary Table ─────────────────────────────────────────
+
+/** Human-readable descriptions for why a framework didn't fire. */
+const NOT_TRIGGERED_REASONS: Record<string, string> = {
+  'hipaa': 'No health/covered-entity data detected',
+  'colorado-ai-act': 'No high-impact consequential decisions in 8 statutory domains',
+  'ccpa-cpra': 'No personal data signals detected',
+  'eu-ai-act-high-risk': 'No Annex III category signals detected (biometrics, employment, education, essential services, law enforcement)',
+  'gdpr': 'No personal data signals detected',
+  'uk-gdpr-dpa-2018': 'No personal data signals detected',
+  'eu-ai-act': 'No applicable signals detected',
+};
+
+/** Short applicability condition for mandatory frameworks that DID fire. */
+const APPLICABILITY_CONDITIONS: Record<string, string> = {
+  'gdpr': 'If you serve EU data subjects',
+  'uk-gdpr-dpa-2018': 'If you serve UK data subjects',
+  'eu-ai-act': 'If AI placed on EU market or outputs used in EU',
+  'eu-ai-act-high-risk': 'Annex III category matched — check Art. 6(3)',
+  'hipaa': 'If you are a HIPAA covered entity',
+  'colorado-ai-act': 'If you do business in Colorado',
+  'ccpa-cpra': 'If CA business thresholds met ($26.6M / 100K consumers)',
+};
+
+function renderApplicabilitySummary(c: StructuredCompliance): string {
+  const activated = new Set((c as any).frameworksActivated ?? []);
+
+  // All 11 frameworks in display order: mandatory first, then voluntary
+  const allFrameworks: Array<{ id: string; name: string; tier: 'mandatory' | 'voluntary' }> = [
+    { id: 'eu-ai-act', name: 'EU AI Act', tier: 'mandatory' },
+    { id: 'eu-ai-act-high-risk', name: 'EU AI Act — High-Risk (Annex III)', tier: 'mandatory' },
+    { id: 'gdpr', name: 'GDPR', tier: 'mandatory' },
+    { id: 'uk-gdpr-dpa-2018', name: 'UK GDPR / DPA 2018', tier: 'mandatory' },
+    { id: 'hipaa', name: 'HIPAA', tier: 'mandatory' },
+    { id: 'colorado-ai-act', name: 'Colorado AI Act (SB 24-205)', tier: 'mandatory' },
+    { id: 'ccpa-cpra', name: 'CCPA / CPRA', tier: 'mandatory' },
+    { id: 'nist-ai-rmf', name: 'NIST AI RMF', tier: 'voluntary' },
+    { id: 'iso-23894', name: 'ISO/IEC 23894', tier: 'voluntary' },
+    { id: 'iso-42001', name: 'ISO/IEC 42001', tier: 'voluntary' },
+    { id: 'soc-2', name: 'SOC 2', tier: 'voluntary' },
+  ];
+
+  const rows = allFrameworks.map(fw => {
+    const isActive = activated.has(fw.id);
+    if (fw.tier === 'voluntary') {
+      return isActive
+        ? `| ${fw.name} | 📋 Recommended | Voluntary best practice |`
+        : `| ${fw.name} | — | Not activated |`;
+    }
+    if (isActive) {
+      const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
+      return `| ${fw.name} | ⚠️ Check | ${condition} |`;
+    } else {
+      const reason = NOT_TRIGGERED_REASONS[fw.id] ?? 'No matching signals';
+      return `| ${fw.name} | ✅ Not applicable | ${reason} |`;
+    }
+  });
+
+  return `### Applicability Summary
+
+| Framework | Status | Condition |
+|-----------|--------|-----------|
+${rows.join('\n')}`;
+}
+
+// ─── Detailed Tier Sections ──────────────────────────────────────────────
+
 function renderTierSection(
   c: StructuredCompliance,
   tier: 'mandatory' | 'voluntary',
@@ -462,7 +529,7 @@ function renderTierSection(
     out += `#### ${title}\n\n`;
     for (const f of flags) {
       const controls = (f.controlIds ?? []).join(', ');
-      out += `- **${f.framework}** — ${controls} *(indicative mapping)*\n`;
+      out += `- **${f.framework}** — ${controls}\n`;
       out += `  ${f.description}\n\n`;
     }
   }
@@ -479,6 +546,8 @@ export function renderStructuredCompliance(c: StructuredCompliance): string {
     `### Methodology`,
     ``,
     `Findings are anchored to NIST AI RMF 1.0, ISO/IEC 23894, ISO/IEC 42001, EU AI Act 2024/1689, GDPR 2016/679, UK GDPR/DPA 2018, HIPAA, SOC 2 TSC 2017, Colorado AI Act SB 24-205, and CCPA/CPRA. Mapping version: \`${c.mappingVersion}\`. Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
+    ``,
+    renderApplicabilitySummary(c),
     ``,
     renderTierSection(c, 'mandatory', 'Mandatory Law'),
     renderTierSection(c, 'voluntary', 'Voluntary Frameworks'),
