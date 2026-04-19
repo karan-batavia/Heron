@@ -471,6 +471,37 @@ const APPLICABILITY_CONDITIONS: Record<string, string> = {
   'ccpa-cpra': 'If CA business thresholds met ($26.6M / 100K consumers)',
 };
 
+/** Map finding types to human-readable gap descriptions. */
+const GAP_LABELS: Record<string, string> = {
+  'excessive-access': 'Excessive permissions',
+  'write-risk': 'Write operation risks',
+  'sensitive-data': 'Data handling',
+  'scope-creep': 'Scope exceeds purpose',
+  'decisions-about-people': 'Automated decision-making',
+  'regulatory-flags': 'Regulatory concerns',
+};
+
+/** Excluded from gap counting — always fires as methodology anchor, not a real gap. */
+const GAP_EXCLUDED = new Set(['risk-score']);
+
+function getGaps(frameworkId: string, allFlags: TypedRegulatoryFlag[]): string[] {
+  const flags = allFlags.filter(f => f.frameworkId === frameworkId && !GAP_EXCLUDED.has(f.triggeredBy));
+  // Also exclude decisions-about-people when it says "No decisions" (impact = none)
+  const meaningful = flags.filter(f =>
+    !(f.triggeredBy === 'decisions-about-people' && /no decisions about people/i.test(f.description)),
+  );
+  const uniqueTypes = [...new Set(meaningful.map(f => f.triggeredBy))];
+  return uniqueTypes.map(t => GAP_LABELS[t] ?? t);
+}
+
+function formatGaps(gaps: string[]): { status: string; details: string } {
+  if (gaps.length === 0) return { status: '✅ No gaps', details: '—' };
+  return {
+    status: `⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''}`,
+    details: gaps.join(', '),
+  };
+}
+
 function renderApplicabilitySummary(c: StructuredCompliance): string {
   const activated = new Set((c as any).frameworksActivated ?? []);
   const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
@@ -494,29 +525,29 @@ function renderApplicabilitySummary(c: StructuredCompliance): string {
 
   const mandatoryRows = mandatoryFrameworks.map(fw => {
     const isActive = activated.has(fw.id);
-    if (isActive) {
-      const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
-      return `| ${fw.name} | ⚠️ Check | ${condition} |`;
-    } else {
+    if (!isActive) {
       const reason = NOT_TRIGGERED_REASONS[fw.id] ?? 'No matching signals';
       return `| ${fw.name} | ✅ Not applicable | ${reason} |`;
     }
+    const gaps = getGaps(fw.id, allFlags);
+    if (gaps.length > 0) {
+      const condition = APPLICABILITY_CONDITIONS[fw.id] ?? '';
+      return `| ${fw.name} | ⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''} | ${gaps.join(', ')} — ${condition} |`;
+    }
+    const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
+    return `| ${fw.name} | ⚠️ Check | ${condition} |`;
   });
 
   const voluntaryRows = voluntaryFrameworks.map(fw => {
-    const isActive = activated.has(fw.id);
-    const controlCount = allFlags.filter(f => f.frameworkId === fw.id).length;
-    if (isActive && controlCount > 0) {
-      return `| ${fw.name} | ✓ ${controlCount} controls | Findings mapped to this framework |`;
-    } else {
-      return `| ${fw.name} | — | No findings mapped |`;
-    }
+    const gaps = getGaps(fw.id, allFlags);
+    const { status, details } = formatGaps(gaps);
+    return `| ${fw.name} | ${status} | ${details} |`;
   });
 
   return `### Applicability Summary
 
-| Framework | Status | Details |
-|-----------|--------|---------|
+| Framework | Status | Gaps Found |
+|-----------|--------|------------|
 | **Mandatory Law** | | |
 ${mandatoryRows.join('\n')}
 | **Voluntary Frameworks** | | |

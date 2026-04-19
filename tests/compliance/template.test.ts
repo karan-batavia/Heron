@@ -100,7 +100,7 @@ describe('Template — AAP-31 structured compliance', () => {
   it('renders Applicability Summary table with mandatory and voluntary sections', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toContain('### Applicability Summary');
-    expect(md).toContain('| Framework | Status | Details |');
+    expect(md).toContain('| Framework | Status | Gaps Found |');
     expect(md).toContain('**Mandatory Law**');
     expect(md).toContain('**Voluntary Frameworks**');
   });
