@@ -97,10 +97,12 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toContain('Control mappings are indicative');
   });
 
-  it('renders Applicability Summary table', () => {
+  it('renders Applicability Summary table with mandatory and voluntary sections', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toContain('### Applicability Summary');
-    expect(md).toContain('| Framework | Status | Condition |');
+    expect(md).toContain('| Framework | Status | Details |');
+    expect(md).toContain('**Mandatory Law**');
+    expect(md).toContain('**Voluntary Frameworks**');
   });
 
   it('emits fallback text when a tier has no flags', () => {

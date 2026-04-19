@@ -473,29 +473,27 @@ const APPLICABILITY_CONDITIONS: Record<string, string> = {
 
 function renderApplicabilitySummary(c: StructuredCompliance): string {
   const activated = new Set((c as any).frameworksActivated ?? []);
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
 
-  // All 11 frameworks in display order: mandatory first, then voluntary
-  const allFrameworks: Array<{ id: string; name: string; tier: 'mandatory' | 'voluntary' }> = [
-    { id: 'eu-ai-act', name: 'EU AI Act', tier: 'mandatory' },
-    { id: 'eu-ai-act-high-risk', name: 'EU AI Act — High-Risk (Annex III)', tier: 'mandatory' },
-    { id: 'gdpr', name: 'GDPR', tier: 'mandatory' },
-    { id: 'uk-gdpr-dpa-2018', name: 'UK GDPR / DPA 2018', tier: 'mandatory' },
-    { id: 'hipaa', name: 'HIPAA', tier: 'mandatory' },
-    { id: 'colorado-ai-act', name: 'Colorado AI Act (SB 24-205)', tier: 'mandatory' },
-    { id: 'ccpa-cpra', name: 'CCPA / CPRA', tier: 'mandatory' },
-    { id: 'nist-ai-rmf', name: 'NIST AI RMF', tier: 'voluntary' },
-    { id: 'iso-23894', name: 'ISO/IEC 23894', tier: 'voluntary' },
-    { id: 'iso-42001', name: 'ISO/IEC 42001', tier: 'voluntary' },
-    { id: 'soc-2', name: 'SOC 2', tier: 'voluntary' },
+  const mandatoryFrameworks: Array<{ id: string; name: string }> = [
+    { id: 'eu-ai-act', name: 'EU AI Act' },
+    { id: 'eu-ai-act-high-risk', name: 'EU AI Act — High-Risk (Annex III)' },
+    { id: 'gdpr', name: 'GDPR' },
+    { id: 'uk-gdpr-dpa-2018', name: 'UK GDPR / DPA 2018' },
+    { id: 'hipaa', name: 'HIPAA' },
+    { id: 'colorado-ai-act', name: 'Colorado AI Act (SB 24-205)' },
+    { id: 'ccpa-cpra', name: 'CCPA / CPRA' },
   ];
 
-  const rows = allFrameworks.map(fw => {
+  const voluntaryFrameworks: Array<{ id: string; name: string }> = [
+    { id: 'nist-ai-rmf', name: 'NIST AI RMF' },
+    { id: 'iso-23894', name: 'ISO/IEC 23894' },
+    { id: 'iso-42001', name: 'ISO/IEC 42001' },
+    { id: 'soc-2', name: 'SOC 2' },
+  ];
+
+  const mandatoryRows = mandatoryFrameworks.map(fw => {
     const isActive = activated.has(fw.id);
-    if (fw.tier === 'voluntary') {
-      return isActive
-        ? `| ${fw.name} | 📋 Recommended | Voluntary best practice |`
-        : `| ${fw.name} | — | Not activated |`;
-    }
     if (isActive) {
       const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
       return `| ${fw.name} | ⚠️ Check | ${condition} |`;
@@ -505,11 +503,24 @@ function renderApplicabilitySummary(c: StructuredCompliance): string {
     }
   });
 
+  const voluntaryRows = voluntaryFrameworks.map(fw => {
+    const isActive = activated.has(fw.id);
+    const controlCount = allFlags.filter(f => f.frameworkId === fw.id).length;
+    if (isActive && controlCount > 0) {
+      return `| ${fw.name} | ✓ ${controlCount} controls | Findings mapped to this framework |`;
+    } else {
+      return `| ${fw.name} | — | No findings mapped |`;
+    }
+  });
+
   return `### Applicability Summary
 
-| Framework | Status | Condition |
-|-----------|--------|-----------|
-${rows.join('\n')}`;
+| Framework | Status | Details |
+|-----------|--------|---------|
+| **Mandatory Law** | | |
+${mandatoryRows.join('\n')}
+| **Voluntary Frameworks** | | |
+${voluntaryRows.join('\n')}`;
 }
 
 // ─── Detailed Tier Sections ──────────────────────────────────────────────

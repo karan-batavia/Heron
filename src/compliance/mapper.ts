@@ -418,19 +418,17 @@ function describeFinding(
   decisionDetails?: string,
 ): { severity: FlagSeverity; description: string } {
   const ids = controlIds.join(', ');
-  const indicative = '(indicative mapping)';
-
   switch (findingType) {
     case 'excessive-access':
       return {
         severity: 'warning',
-        description: `Agent holds permissions beyond stated need. Activates ${framework.name} controls (${ids}) ${indicative}. Narrow scopes to the minimum required.`,
+        description: `Agent holds permissions beyond stated need. Activates ${framework.name} controls (${ids}). Narrow scopes to the minimum required.`,
       };
 
     case 'scope-creep':
       return {
         severity: 'warning',
-        description: `Requested scopes exceed stated needs across one or more systems. Activates ${framework.name} controls (${ids}) ${indicative}. Review purpose-limitation and change-management process.`,
+        description: `Requested scopes exceed stated needs across one or more systems. Activates ${framework.name} controls (${ids}). Review purpose-limitation and change-management process.`,
       };
 
     case 'sensitive-data': {
@@ -442,7 +440,7 @@ function describeFinding(
         : 'personal data';
       return {
         severity: sev,
-        description: `Agent processes ${qualifier}. Activates ${framework.name} controls (${ids}) ${indicative}. Ensure lawful basis, data minimization, and breach-readiness.`,
+        description: `Agent processes ${qualifier}. Activates ${framework.name} controls (${ids}). Ensure lawful basis, data minimization, and breach-readiness.`,
       };
     }
 
@@ -458,20 +456,20 @@ function describeFinding(
           : 'Write operations detected. ';
       return {
         severity: sev,
-        description: `${qualifier}Activates ${framework.name} controls (${ids}) ${indicative}. Require approval, monitoring, and rollback paths for high-impact operations.`,
+        description: `${qualifier}Activates ${framework.name} controls (${ids}). Require approval, monitoring, and rollback paths for high-impact operations.`,
       };
     }
 
     case 'regulatory-flags':
       return {
         severity: 'clarification-needed',
-        description: `Agent may operate in a regulated domain (employment, credit, insurance, health, housing, education, legal). Activates ${framework.name} controls (${ids}) ${indicative}. Clarify the agent's domain to determine obligations.`,
+        description: `Agent may operate in a regulated domain (employment, credit, insurance, health, housing, education, legal). Activates ${framework.name} controls (${ids}). Clarify the agent's domain to determine obligations.`,
       };
 
     case 'risk-score':
       return {
         severity: 'info',
-        description: `Overall risk rating is anchored to ${framework.name} risk-management controls (${ids}) ${indicative}. See Methodology.`,
+        description: `Overall risk rating is anchored to ${framework.name} risk-management controls (${ids}). See Methodology.`,
       };
 
     case 'decisions-about-people': {
@@ -484,24 +482,24 @@ function describeFinding(
           severity: 'action-required',
           description: `High-impact automated decisions about people${
             employment ? ' (employment context)' : ''
-          }. Activates ${framework.name} controls (${ids}) ${indicative}. Requires human oversight, contestability, and explanation of logic.`,
+          }. Activates ${framework.name} controls (${ids}). Requires human oversight, contestability, and explanation of logic.`,
         };
       }
       if (impact === 'medium') {
         return {
           severity: 'info',
-          description: `Agent influences outcomes for people (scoring/ranking/recommending) without binding legal effects. Activates ${framework.name} controls (${ids}) ${indicative}. Maintain transparency and data-subject rights.`,
+          description: `Agent influences outcomes for people (scoring/ranking/recommending) without binding legal effects. Activates ${framework.name} controls (${ids}). Maintain transparency and data-subject rights.`,
         };
       }
       if (impact === 'unclear') {
         return {
           severity: 'clarification-needed',
-          description: `Agent reports making decisions about people but impact level is unclear. Activates ${framework.name} controls (${ids}) ${indicative}. Clarify whether decisions have legal/significant effects.`,
+          description: `Agent reports making decisions about people but impact level is unclear. Activates ${framework.name} controls (${ids}). Clarify whether decisions have legal/significant effects.`,
         };
       }
       return {
         severity: 'info',
-        description: `No decisions about people detected. ${framework.name} controls (${ids}) listed for reference ${indicative}.`,
+        description: `No decisions about people detected. ${framework.name} controls (${ids}) listed for reference.`,
       };
     }
   }

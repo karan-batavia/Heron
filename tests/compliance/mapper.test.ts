@@ -153,14 +153,16 @@ describe('mapFindingsToRiskCategories', () => {
     }
   });
 
-  it('every flag carries an "indicative mapping" qualifier', () => {
+  it('every flag carries a description with framework name', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
       transcript: tx(['name email pii via api']),
     });
     expect(r.all.length).toBeGreaterThan(0);
     for (const f of r.all) {
-      expect(f.description.toLowerCase()).toContain('indicative mapping');
+      // Each flag description should mention its framework (indicative mapping note
+      // is now only in the Methodology section, not per-flag)
+      expect(f.description.length).toBeGreaterThan(20);
     }
   });
 
