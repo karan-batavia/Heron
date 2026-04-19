@@ -3,42 +3,46 @@ import { MAPPING_VERSION } from '../../src/compliance/types.js';
 import { renderStructuredCompliance } from '../../src/report/templates.js';
 import type { StructuredCompliance } from '../../src/report/types.js';
 
+const gdprFlag = {
+  framework: 'GDPR',
+  severity: 'action-required' as const,
+  description: 'Personal data processed without explicit consent basis.',
+  controlIds: ['Art. 6', 'Art. 13'],
+  category: 'privacy' as const,
+  tier: 'mandatory' as const,
+  mandatoryIn: ['EU', 'UK'],
+  frameworkId: 'gdpr',
+  triggeredBy: 'sensitive-data',
+};
+
+const nistFlag = {
+  framework: 'NIST AI RMF',
+  severity: 'warning' as const,
+  description: 'No documented data minimization procedure.',
+  controlIds: ['GOVERN 1.1', 'MAP 1.6'],
+  category: 'privacy' as const,
+  tier: 'voluntary' as const,
+  mandatoryIn: [] as string[],
+  frameworkId: 'nist-ai-rmf',
+  triggeredBy: 'sensitive-data',
+};
+
 const fakeCompliance: StructuredCompliance = {
   mappingVersion: MAPPING_VERSION,
   mandatory: {
-    privacy: [
-      {
-        framework: 'GDPR',
-        severity: 'action-required',
-        description: 'Personal data processed without explicit consent basis.',
-        controlIds: ['GDPR Art. 6', 'GDPR Art. 13'],
-        category: 'privacy',
-        tier: 'mandatory',
-        mandatoryIn: ['EU', 'UK'],
-      },
-    ],
+    privacy: [gdprFlag],
     ip: [],
     'consumer-protection': [],
     'sector-specific': [],
   },
   voluntary: {
-    privacy: [
-      {
-        framework: 'NIST AI RMF',
-        severity: 'warning',
-        description: 'No documented data minimization procedure.',
-        controlIds: ['GOVERN 1.1', 'MAP 1.6'],
-        category: 'privacy',
-        tier: 'voluntary',
-        mandatoryIn: [],
-      },
-    ],
+    privacy: [nistFlag],
     ip: [],
     'consumer-protection': [],
     'sector-specific': [],
   },
   frameworksActivated: ['gdpr', 'nist-ai-rmf'],
-  all: [],
+  all: [gdprFlag, nistFlag],
 };
 
 const emptyCompliance: StructuredCompliance = {
@@ -65,16 +69,18 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toMatch(/## Regulatory Compliance[\s\S]*### Methodology/);
   });
 
-  it('contains Mandatory Law section with H4 categories', () => {
+  it('contains finding-first Compliance Detail section', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toMatch(/### Mandatory Law/);
-    // Privacy category should be visible since the fixture has a GDPR flag there
-    expect(md).toMatch(/#### Privacy/);
+    expect(md).toMatch(/### Compliance Detail/);
+    // Should show gap labels as H4 headings, not framework names
+    expect(md).toMatch(/#### (Excessive permissions|Data handling|Write operation risks|Automated decision-making)/);
   });
 
-  it('contains Voluntary Frameworks section', () => {
+  it('shows Affects line with grouped framework controls', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toMatch(/### Voluntary Frameworks/);
+    expect(md).toContain('**Affects:**');
+    // Should contain at least one framework reference
+    expect(md).toMatch(/GDPR|EU AI Act|NIST|SOC 2/);
   });
 
   it('does NOT contain Jurisdictional Appendix or EU/US/UK H3s', () => {
@@ -90,9 +96,10 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toContain(MAPPING_VERSION);
   });
 
-  it('renders flag with controlIds (indicative mapping note in Methodology only)', () => {
+  it('references framework controls in Affects line (indicative note in Methodology only)', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toContain('GDPR Art. 6');
+    // Controls show in "Affects:" line, grouped by framework
+    expect(md).toMatch(/GDPR \(Art\. 6/);
     // indicative mapping disclaimer lives in Methodology, not per-line
     expect(md).toContain('Control mappings are indicative');
   });
@@ -105,19 +112,18 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toContain('**Voluntary Frameworks**');
   });
 
-  it('emits fallback text when a tier has no flags', () => {
+  it('emits fallback text when no compliance gaps exist', () => {
     const md = renderStructuredCompliance(emptyCompliance);
-    expect(md).toMatch(/No mandatory obligations identified/);
-    expect(md).toMatch(/No voluntary obligations identified/);
+    expect(md).toMatch(/No compliance gaps identified/);
   });
 
-  it('framework name appears in mandatory tier output', () => {
+  it('framework name appears in Affects line', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toContain('**GDPR**');
+    expect(md).toContain('GDPR');
   });
 
-  it('voluntary framework name appears in voluntary tier output', () => {
+  it('NIST appears in Affects line or summary table', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toContain('**NIST AI RMF**');
+    expect(md).toContain('NIST');
   });
 });

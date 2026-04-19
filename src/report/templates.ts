@@ -554,30 +554,80 @@ ${mandatoryRows.join('\n')}
 ${voluntaryRows.join('\n')}`;
 }
 
-// ─── Detailed Tier Sections ──────────────────────────────────────────────
+// ─── Finding-first detail (replaces framework-first tier sections) ────────
 
-function renderTierSection(
-  c: StructuredCompliance,
-  tier: 'mandatory' | 'voluntary',
-  heading: string,
-): string {
-  const bucket = c[tier];
-  let out = `### ${heading}\n\n`;
-  let anyEmitted = false;
-  for (const { key, title } of CATEGORIES) {
-    const flags = bucket[key] ?? [];
-    if (flags.length === 0) continue;
-    anyEmitted = true;
-    out += `#### ${title}\n\n`;
+/** One-line gap descriptions per finding type. */
+const GAP_DESCRIPTIONS: Record<string, string> = {
+  'excessive-access': 'Agent holds permissions beyond stated need. Narrow scopes to the minimum required (least-privilege).',
+  'write-risk': 'Write operations detected that can affect users or downstream systems. Require approval, monitoring, and rollback paths for high-impact operations.',
+  'sensitive-data': 'Agent processes personal data. Ensure lawful basis, data minimization, and breach-readiness.',
+  'scope-creep': 'Requested scopes exceed what is needed for the stated purpose. Review purpose-limitation and change-management process.',
+  'decisions-about-people': 'Agent makes or influences automated decisions affecting individuals. Requires human oversight, contestability, transparency, and data-subject rights.',
+  'regulatory-flags': 'Agent may operate in a regulated domain (employment, credit, insurance, health, housing, education, legal). Clarify the agent\'s domain to determine obligations.',
+};
+
+/** Short framework display names for the "Affects" line. */
+function frameworkShortName(id: string): string {
+  const names: Record<string, string> = {
+    'eu-ai-act': 'EU AI Act',
+    'eu-ai-act-high-risk': 'EU AI Act (High-Risk)',
+    'gdpr': 'GDPR',
+    'uk-gdpr-dpa-2018': 'UK GDPR',
+    'hipaa': 'HIPAA',
+    'colorado-ai-act': 'Colorado AI Act',
+    'ccpa-cpra': 'CCPA',
+    'nist-ai-rmf': 'NIST',
+    'iso-23894': 'ISO 23894',
+    'iso-42001': 'ISO 42001',
+    'soc-2': 'SOC 2',
+  };
+  return names[id] ?? id;
+}
+
+function renderFindingFirstDetail(c: StructuredCompliance): string {
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
+
+  // Group flags by finding type (triggeredBy)
+  const byFinding = new Map<string, TypedRegulatoryFlag[]>();
+  for (const f of allFlags) {
+    if (GAP_EXCLUDED.has(f.triggeredBy)) continue;
+    // Skip "no decisions" placeholder
+    if (f.triggeredBy === 'decisions-about-people' && /no decisions about people/i.test(f.description)) continue;
+    const arr = byFinding.get(f.triggeredBy) ?? [];
+    arr.push(f);
+    byFinding.set(f.triggeredBy, arr);
+  }
+
+  if (byFinding.size === 0) {
+    return `### Compliance Detail\n\n_No compliance gaps identified from current signals._\n`;
+  }
+
+  let out = `### Compliance Detail\n\n`;
+
+  for (const [findingType, flags] of byFinding) {
+    const label = GAP_LABELS[findingType] ?? findingType;
+    const description = GAP_DESCRIPTIONS[findingType] ?? '';
+
+    // Group controls by framework for compact "Affects" line
+    const byFramework = new Map<string, string[]>();
     for (const f of flags) {
-      const controls = (f.controlIds ?? []).join(', ');
-      out += `- **${f.framework}** — ${controls}\n`;
-      out += `  ${f.description}\n\n`;
+      const fwName = frameworkShortName(f.frameworkId);
+      const existing = byFramework.get(fwName) ?? [];
+      for (const ctrl of (f.controlIds ?? [])) {
+        if (!existing.includes(ctrl)) existing.push(ctrl);
+      }
+      byFramework.set(fwName, existing);
     }
+
+    const affectsParts = [...byFramework.entries()].map(([fw, ctrls]) =>
+      ctrls.length > 0 ? `${fw} (${ctrls.join(', ')})` : fw,
+    );
+
+    out += `#### ${label}\n\n`;
+    out += `${description}\n\n`;
+    out += `**Affects:** ${affectsParts.join(' · ')}\n\n`;
   }
-  if (!anyEmitted) {
-    out += `_No ${tier} obligations identified from current signals._\n\n`;
-  }
+
   return out;
 }
 
@@ -591,8 +641,7 @@ export function renderStructuredCompliance(c: StructuredCompliance): string {
     ``,
     renderApplicabilitySummary(c),
     ``,
-    renderTierSection(c, 'mandatory', 'Mandatory Law'),
-    renderTierSection(c, 'voluntary', 'Voluntary Frameworks'),
+    renderFindingFirstDetail(c),
   ].join('\n');
 }
 
