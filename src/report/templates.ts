@@ -23,7 +23,7 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderSystems(report.systems),
     renderPositiveFindings(report),
     renderVerdict(report),
-    report.compliance ? renderRegulatoryCompliance(report.compliance) : null,
+    report.compliance ? renderRegulatoryCompliance(report.compliance as StructuredCompliance, report) : null,
     report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderTranscript(report.transcript),
     renderDisclaimer(),
@@ -556,15 +556,55 @@ ${voluntaryRows.join('\n')}`;
 
 // ─── Finding-first detail (replaces framework-first tier sections) ────────
 
-/** One-line gap descriptions per finding type. */
-const GAP_DESCRIPTIONS: Record<string, string> = {
-  'excessive-access': 'Agent holds permissions beyond stated need. Narrow scopes to the minimum required (least-privilege).',
-  'write-risk': 'Write operations detected that can affect users or downstream systems. Require approval, monitoring, and rollback paths for high-impact operations.',
-  'sensitive-data': 'Agent processes personal data. Ensure lawful basis, data minimization, and breach-readiness.',
-  'scope-creep': 'Requested scopes exceed what is needed for the stated purpose. Review purpose-limitation and change-management process.',
-  'decisions-about-people': 'Agent makes or influences automated decisions affecting individuals. Requires human oversight, contestability, transparency, and data-subject rights.',
-  'regulatory-flags': 'Agent may operate in a regulated domain (employment, credit, insurance, health, housing, education, legal). Clarify the agent\'s domain to determine obligations.',
-};
+/**
+ * Build agent-specific gap description from actual report data.
+ * Falls back to generic text if no specific context available.
+ */
+function buildGapDescription(findingType: string, report?: AuditReport): string {
+  const systems = report?.systems?.filter(isBusinessSystem) ?? [];
+  const systemNames = systems.map(s => s.systemId).join(', ');
+  const excessiveScopes = systems.flatMap(s => s.scopesDelta?.map(d => `${s.systemId}: ${d}`) ?? []);
+  const writes = systems.flatMap(s => s.writeOperations?.map(w => `${w.operation} → ${w.target}`) ?? []);
+  const hasIrreversible = systems.some(s => s.writeOperations?.some(w => !w.reversible));
+  const dataSensitivities = [...new Set(systems.map(s => s.dataSensitivity).filter(Boolean))];
+  const decisionDetails = report?.decisionMakingDetails ?? '';
+
+  switch (findingType) {
+    case 'excessive-access':
+      if (excessiveScopes.length > 0) {
+        return `Agent holds permissions beyond stated need on ${systems.length} system(s). Excessive scopes detected: ${excessiveScopes.slice(0, 3).join('; ')}${excessiveScopes.length > 3 ? ` (+${excessiveScopes.length - 3} more)` : ''}. Narrow each to the minimum required scope.`;
+      }
+      return `Agent holds permissions beyond stated need on ${systemNames || 'connected systems'}. Review and narrow scopes to the minimum required (least-privilege).`;
+
+    case 'write-risk':
+      if (writes.length > 0) {
+        const qualifier = hasIrreversible ? 'including irreversible operations' : 'all reported as reversible';
+        return `Agent performs ${writes.length} write operation(s) (${qualifier}): ${writes.slice(0, 3).join('; ')}${writes.length > 3 ? ` (+${writes.length - 3} more)` : ''}. Require approval, monitoring, and rollback paths for high-impact operations.`;
+      }
+      return 'Write operations detected that can affect users or downstream systems. Require approval, monitoring, and rollback paths.';
+
+    case 'sensitive-data':
+      if (dataSensitivities.length > 0) {
+        return `Agent processes ${dataSensitivities.join(', ')} data across ${systemNames || 'connected systems'}. Ensure lawful basis under GDPR Art. 6, data minimization (Art. 5(1)(c)), and breach-readiness (Art. 33).`;
+      }
+      return 'Agent processes personal data. Ensure lawful basis, data minimization, and breach-readiness.';
+
+    case 'scope-creep':
+      return `Requested scopes on ${systemNames || 'one or more systems'} exceed what is needed for the stated purpose. Review purpose-limitation (GDPR Art. 5(1)(b)) and change-management process.`;
+
+    case 'decisions-about-people':
+      if (decisionDetails) {
+        return `Agent makes or influences automated decisions affecting individuals: "${decisionDetails.slice(0, 150)}". Requires human oversight, contestability, transparency, and data-subject rights (GDPR Art. 22).`;
+      }
+      return 'Agent makes or influences automated decisions affecting individuals. Requires human oversight, contestability, transparency, and data-subject rights.';
+
+    case 'regulatory-flags':
+      return 'Agent may operate in a regulated domain. Clarify the agent\'s domain to determine sector-specific obligations.';
+
+    default:
+      return '';
+  }
+}
 
 /** Short framework display names for the "Affects" line. */
 function frameworkShortName(id: string): string {
@@ -584,14 +624,13 @@ function frameworkShortName(id: string): string {
   return names[id] ?? id;
 }
 
-function renderFindingFirstDetail(c: StructuredCompliance): string {
+function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport): string {
   const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
 
   // Group flags by finding type (triggeredBy)
   const byFinding = new Map<string, TypedRegulatoryFlag[]>();
   for (const f of allFlags) {
     if (GAP_EXCLUDED.has(f.triggeredBy)) continue;
-    // Skip "no decisions" placeholder
     if (f.triggeredBy === 'decisions-about-people' && /no decisions about people/i.test(f.description)) continue;
     const arr = byFinding.get(f.triggeredBy) ?? [];
     arr.push(f);
@@ -606,7 +645,7 @@ function renderFindingFirstDetail(c: StructuredCompliance): string {
 
   for (const [findingType, flags] of byFinding) {
     const label = GAP_LABELS[findingType] ?? findingType;
-    const description = GAP_DESCRIPTIONS[findingType] ?? '';
+    const description = buildGapDescription(findingType, report);
 
     // Group controls by framework for compact "Affects" line
     const byFramework = new Map<string, string[]>();
@@ -631,7 +670,61 @@ function renderFindingFirstDetail(c: StructuredCompliance): string {
   return out;
 }
 
-export function renderStructuredCompliance(c: StructuredCompliance): string {
+// ─── Obligations Requiring Further Review ─────────────────────────────────
+
+function renderObligationsChecklist(c: StructuredCompliance, report?: AuditReport): string {
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
+  const activated = new Set((c as any).frameworksActivated ?? []);
+  const items: string[] = [];
+
+  // GDPR-triggered obligations (if GDPR or UK GDPR activated)
+  const hasGdpr = activated.has('gdpr') || activated.has('uk-gdpr-dpa-2018');
+  if (hasGdpr) {
+    items.push('**GDPR Art. 6** — Determine lawful basis for each processing activity (likely Art. 6(1)(f) legitimate interest for commercial data processing — requires documented balancing test)');
+    items.push('**GDPR Art. 13/14** — Provide privacy notice to data subjects (Art. 14 if data not obtained directly from the individual)');
+    items.push('**GDPR Art. 28** — Verify data processing agreements (DPA) with all processors (cloud providers, APIs, third-party platforms)');
+    items.push('**GDPR Art. 30** — Maintain records of processing activities');
+    items.push('**GDPR Art. 5(1)(e)** — Establish data retention schedule and deletion policy');
+
+    // DPIA if systematic profiling or large-scale processing
+    const hasProfiling = allFlags.some(f => f.triggeredBy === 'decisions-about-people');
+    const hasLargeScale = (report?.systems?.length ?? 0) >= 3;
+    if (hasProfiling || hasLargeScale) {
+      items.push('**GDPR Art. 35** — Conduct Data Protection Impact Assessment (DPIA) — likely required due to systematic profiling/large-scale processing');
+    }
+
+    // Cross-border transfers if any US-based service
+    items.push('**GDPR Arts. 44-49** — Verify cross-border transfer mechanism for data sent to non-EU/EEA services (e.g., US-based cloud providers)');
+  }
+
+  // CCPA obligations
+  if (activated.has('ccpa-cpra')) {
+    items.push('**CCPA** — Verify business meets applicability thresholds ($26.6M revenue / 100K CA consumers / 50% PI revenue)');
+  }
+
+  // Decisions about people
+  const hasDecisions = allFlags.some(f =>
+    f.triggeredBy === 'decisions-about-people' && !/no decisions about people/i.test(f.description),
+  );
+  if (hasDecisions) {
+    items.push('**GDPR Art. 22** — Document safeguards for automated decision-making (human oversight mechanism, right to contest, explanation of logic)');
+  }
+
+  // Always applicable
+  items.push('**Credential security** — Verify API keys/tokens are encrypted at rest, rotated periodically, and stored in a secrets manager (not env vars or config files)');
+  items.push('**Platform ToS** — Verify compliance with Terms of Service of all connected platforms (API usage policies, scraping restrictions, rate limits)');
+  items.push('**Incident response** — Establish breach notification procedure (GDPR Art. 33: 72 hours to supervisory authority; Art. 34: to data subjects if high risk)');
+
+  if (items.length === 0) return '';
+
+  return `### Obligations Requiring Further Review
+
+The following compliance obligations cannot be fully assessed from this interview alone. The deployer must address these independently:
+
+${items.map(item => `- [ ] ${item}`).join('\n')}`;
+}
+
+export function renderStructuredCompliance(c: StructuredCompliance, report?: AuditReport): string {
   return [
     `## Regulatory Compliance`,
     ``,
@@ -641,12 +734,13 @@ export function renderStructuredCompliance(c: StructuredCompliance): string {
     ``,
     renderApplicabilitySummary(c),
     ``,
-    renderFindingFirstDetail(c),
+    renderFindingFirstDetail(c, report),
+    renderObligationsChecklist(c, report),
   ].join('\n');
 }
 
-function renderRegulatoryCompliance(compliance: StructuredCompliance): string {
-  return renderStructuredCompliance(compliance);
+function renderRegulatoryCompliance(compliance: StructuredCompliance, report?: AuditReport): string {
+  return renderStructuredCompliance(compliance, report);
 }
 
 // ─── Disclaimer ─────────────────────────────────────────────────────────────
