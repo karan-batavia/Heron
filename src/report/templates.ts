@@ -130,9 +130,14 @@ function renderSummary(report: AuditReport): string {
 |------|---------|----------|
 | **${report.overallRiskLevel.toUpperCase()}** | ${systemCount} | ${findingsParts.join(', ')} |`;
 
-  const methodology = report.compliance
-    ? `\n\n> **Risk methodology**: NIST AI RMF (MANAGE 1.2, MEASURE 1.1), ISO/IEC 23894 (Clause 6.3, 6.4.4), EU AI Act Art. 9(2)(b). Mapping version: \`${(report.compliance as StructuredCompliance).mappingVersion}\`.`
-    : '';
+  let methodology = '';
+  if (report.compliance) {
+    const c = report.compliance as StructuredCompliance;
+    const activated = ((c as any).frameworksActivated ?? []) as string[];
+    const names = activated.map(id => frameworkShortName(id)).filter(Boolean);
+    const fwList = names.length > 0 ? names.join(', ') : 'see Regulatory Compliance section';
+    methodology = `\n\n> **Risk methodology** anchored to ${names.length} frameworks: ${fwList}. Mapping version: \`${c.mappingVersion}\`.`;
+  }
 
   return `## Executive Summary
 
@@ -675,53 +680,58 @@ function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport)
 function renderObligationsChecklist(c: StructuredCompliance, report?: AuditReport): string {
   const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
   const activated = new Set((c as any).frameworksActivated ?? []);
-  const items: string[] = [];
+  const rows: Array<{ obligation: string; action: string }> = [];
 
-  // GDPR-triggered obligations (if GDPR or UK GDPR activated)
+  // GDPR-triggered obligations
   const hasGdpr = activated.has('gdpr') || activated.has('uk-gdpr-dpa-2018');
   if (hasGdpr) {
-    items.push('**GDPR Art. 6** — Determine lawful basis for each processing activity (likely Art. 6(1)(f) legitimate interest for commercial data processing — requires documented balancing test)');
-    items.push('**GDPR Art. 13/14** — Provide privacy notice to data subjects (Art. 14 if data not obtained directly from the individual)');
-    items.push('**GDPR Art. 28** — Verify data processing agreements (DPA) with all processors (cloud providers, APIs, third-party platforms)');
-    items.push('**GDPR Art. 30** — Maintain records of processing activities');
-    items.push('**GDPR Art. 5(1)(e)** — Establish data retention schedule and deletion policy');
+    rows.push({ obligation: 'GDPR Art. 6', action: 'Determine lawful basis (likely Art. 6(1)(f) legitimate interest — requires balancing test)' });
+    rows.push({ obligation: 'GDPR Art. 13/14', action: 'Provide privacy notice (Art. 14 if data not obtained directly from individual)' });
+    rows.push({ obligation: 'GDPR Art. 15', action: 'Implement right-of-access process (respond to data subject requests)' });
+    rows.push({ obligation: 'GDPR Art. 17', action: 'Implement right-to-erasure process (delete data on request)' });
+    rows.push({ obligation: 'GDPR Art. 21', action: 'Implement right-to-object process (absolute right for direct marketing profiling)' });
+    rows.push({ obligation: 'GDPR Art. 28', action: 'Verify DPAs with all processors (cloud providers, APIs, platforms)' });
+    rows.push({ obligation: 'GDPR Art. 30', action: 'Maintain records of processing activities' });
+    rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Establish data retention schedule and deletion policy' });
 
-    // DPIA if systematic profiling or large-scale processing
     const hasProfiling = allFlags.some(f => f.triggeredBy === 'decisions-about-people');
     const hasLargeScale = (report?.systems?.length ?? 0) >= 3;
     if (hasProfiling || hasLargeScale) {
-      items.push('**GDPR Art. 35** — Conduct Data Protection Impact Assessment (DPIA) — likely required due to systematic profiling/large-scale processing');
+      rows.push({ obligation: 'GDPR Art. 35', action: 'Conduct DPIA (likely required — systematic profiling / large-scale processing)' });
     }
 
-    // Cross-border transfers if any US-based service
-    items.push('**GDPR Arts. 44-49** — Verify cross-border transfer mechanism for data sent to non-EU/EEA services (e.g., US-based cloud providers)');
+    rows.push({ obligation: 'GDPR Arts. 44-49', action: 'Verify cross-border transfer mechanism for non-EU/EEA services' });
   }
 
-  // CCPA obligations
+  // CCPA
   if (activated.has('ccpa-cpra')) {
-    items.push('**CCPA** — Verify business meets applicability thresholds ($26.6M revenue / 100K CA consumers / 50% PI revenue)');
+    rows.push({ obligation: 'CCPA', action: 'Verify business meets thresholds ($26.6M / 100K CA consumers / 50% PI revenue)' });
   }
 
-  // Decisions about people
+  // Automated decisions
   const hasDecisions = allFlags.some(f =>
     f.triggeredBy === 'decisions-about-people' && !/no decisions about people/i.test(f.description),
   );
   if (hasDecisions) {
-    items.push('**GDPR Art. 22** — Document safeguards for automated decision-making (human oversight mechanism, right to contest, explanation of logic)');
+    rows.push({ obligation: 'GDPR Art. 22', action: 'Document safeguards for automated decisions (oversight, contestability, logic explanation)' });
   }
 
   // Always applicable
-  items.push('**Credential security** — Verify API keys/tokens are encrypted at rest, rotated periodically, and stored in a secrets manager (not env vars or config files)');
-  items.push('**Platform ToS** — Verify compliance with Terms of Service of all connected platforms (API usage policies, scraping restrictions, rate limits)');
-  items.push('**Incident response** — Establish breach notification procedure (GDPR Art. 33: 72 hours to supervisory authority; Art. 34: to data subjects if high risk)');
+  rows.push({ obligation: 'Credentials', action: 'Verify tokens encrypted at rest, rotated, stored in secrets manager' });
+  rows.push({ obligation: 'Platform ToS', action: 'Verify compliance with all connected platforms (API policies, scraping, rate limits)' });
+  rows.push({ obligation: 'Incident response', action: 'Establish breach notification (Art. 33: 72h to authority; Art. 34: to data subjects)' });
 
-  if (items.length === 0) return '';
+  if (rows.length === 0) return '';
+
+  const tableRows = rows.map(r => `| ${r.obligation} | ${r.action} |`).join('\n');
 
   return `### Obligations Requiring Further Review
 
-The following compliance obligations cannot be fully assessed from this interview alone. The deployer must address these independently:
+The following cannot be assessed from this interview alone — the deployer must address independently:
 
-${items.map(item => `- [ ] ${item}`).join('\n')}`;
+| Obligation | Action Required |
+|------------|-----------------|
+${tableRows}`;
 }
 
 export function renderStructuredCompliance(c: StructuredCompliance, report?: AuditReport): string {
