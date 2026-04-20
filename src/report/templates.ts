@@ -685,27 +685,27 @@ function renderObligationsChecklist(c: StructuredCompliance, report?: AuditRepor
   // GDPR-triggered obligations
   const hasGdpr = activated.has('gdpr') || activated.has('uk-gdpr-dpa-2018');
   if (hasGdpr) {
-    rows.push({ obligation: 'GDPR Art. 6', action: 'Determine lawful basis (likely Art. 6(1)(f) legitimate interest — requires balancing test)' });
-    rows.push({ obligation: 'GDPR Art. 13/14', action: 'Provide privacy notice (Art. 14 if data not obtained directly from individual)' });
-    rows.push({ obligation: 'GDPR Art. 15', action: 'Implement right-of-access process (respond to data subject requests)' });
-    rows.push({ obligation: 'GDPR Art. 17', action: 'Implement right-to-erasure process (delete data on request)' });
-    rows.push({ obligation: 'GDPR Art. 21', action: 'Implement right-to-object process (absolute right for direct marketing profiling)' });
-    rows.push({ obligation: 'GDPR Art. 28', action: 'Verify DPAs with all processors (cloud providers, APIs, platforms)' });
-    rows.push({ obligation: 'GDPR Art. 30', action: 'Maintain records of processing activities' });
-    rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Establish data retention schedule and deletion policy' });
+    rows.push({ obligation: 'GDPR Art. 6', action: 'Decide and document WHY you are allowed to process this data (e.g. legitimate business interest — must document a balancing test)' });
+    rows.push({ obligation: 'GDPR Art. 13/14', action: 'Tell people you are collecting their data: what, why, how long, and their rights' });
+    rows.push({ obligation: 'GDPR Art. 15', action: 'Be ready to show someone all data you hold on them if they ask' });
+    rows.push({ obligation: 'GDPR Art. 17', action: 'Be ready to delete someone\'s data from all systems if they ask' });
+    rows.push({ obligation: 'GDPR Art. 21', action: 'Let people opt out of being profiled for sales/marketing — you must stop if they object' });
+    rows.push({ obligation: 'GDPR Art. 28', action: 'Sign data processing contracts with every service you send data to (Google, Apify, etc.)' });
+    rows.push({ obligation: 'GDPR Art. 30', action: 'Keep a written log of what personal data you process, why, and who has access' });
+    rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Set rules for how long you keep data — then actually delete it on schedule' });
 
     const hasProfiling = allFlags.some(f => f.triggeredBy === 'decisions-about-people');
     const hasLargeScale = (report?.systems?.length ?? 0) >= 3;
     if (hasProfiling || hasLargeScale) {
-      rows.push({ obligation: 'GDPR Art. 35', action: 'Conduct DPIA (likely required — systematic profiling / large-scale processing)' });
+      rows.push({ obligation: 'GDPR Art. 35', action: 'Do a privacy impact assessment before going live (you profile people at scale — this is likely required)' });
     }
 
-    rows.push({ obligation: 'GDPR Arts. 44-49', action: 'Verify cross-border transfer mechanism for non-EU/EEA services' });
+    rows.push({ obligation: 'GDPR Arts. 44-49', action: 'If data leaves EU (e.g. to US-based Google/Apify), you need a legal basis for that transfer' });
   }
 
   // CCPA
   if (activated.has('ccpa-cpra')) {
-    rows.push({ obligation: 'CCPA', action: 'Verify business meets thresholds ($26.6M / 100K CA consumers / 50% PI revenue)' });
+    rows.push({ obligation: 'CCPA', action: 'Check if California privacy law applies to you: >$26.6M revenue, or >100K CA users, or >50% revenue from selling personal data' });
   }
 
   // Automated decisions
@@ -713,13 +713,13 @@ function renderObligationsChecklist(c: StructuredCompliance, report?: AuditRepor
     f.triggeredBy === 'decisions-about-people' && !/no decisions about people/i.test(f.description),
   );
   if (hasDecisions) {
-    rows.push({ obligation: 'GDPR Art. 22', action: 'Document safeguards for automated decisions (oversight, contestability, logic explanation)' });
+    rows.push({ obligation: 'GDPR Art. 22', action: 'If AI makes decisions about people: ensure a human can review, people can contest, and the logic is explainable' });
   }
 
   // Always applicable
-  rows.push({ obligation: 'Credentials', action: 'Verify tokens encrypted at rest, rotated, stored in secrets manager' });
-  rows.push({ obligation: 'Platform ToS', action: 'Verify compliance with all connected platforms (API policies, scraping, rate limits)' });
-  rows.push({ obligation: 'Incident response', action: 'Establish breach notification (Art. 33: 72h to authority; Art. 34: to data subjects)' });
+  rows.push({ obligation: 'Credentials', action: 'Store API keys/tokens in a secrets manager (not in code or env files), rotate them regularly' });
+  rows.push({ obligation: 'Platform ToS', action: 'Check you are not violating the rules of LinkedIn, Google, or other connected services (scraping, rate limits, usage policies)' });
+  rows.push({ obligation: 'Incident response', action: 'Have a plan: if data leaks, who do you notify and within what timeframe? (EU: 72 hours to regulator)' });
 
   if (rows.length === 0) return '';
 
