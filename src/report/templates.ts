@@ -1,4 +1,5 @@
-import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, RegulatoryCompliance, RegulatoryFlag } from './types.js';
+import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, StructuredCompliance, RegulatoryFlag } from './types.js';
+import type { TypedRegulatoryFlag } from '../compliance/mapper.js';
 
 /** Filter out interview/orchestration platforms that aren't real business systems */
 function isBusinessSystem(s: SystemAssessment): boolean {
@@ -18,11 +19,11 @@ export function renderMarkdownReport(report: AuditReport): string {
     renderScopeAndMethodology(report),
     renderSummary(report),
     renderAgentProfile(report),
-    renderFindings(report.risks),
+    renderFindings(report.risks, report.compliance as StructuredCompliance | undefined),
     renderSystems(report.systems),
     renderPositiveFindings(report),
     renderVerdict(report),
-    report.regulatoryCompliance ? renderRegulatoryCompliance(report.regulatoryCompliance) : null,
+    report.compliance ? renderRegulatoryCompliance(report.compliance as StructuredCompliance, report) : null,
     report.dataQuality ? renderDataQuality(report.dataQuality) : null,
     renderTranscript(report.transcript),
     renderDisclaimer(),
@@ -37,20 +38,20 @@ function renderHeader(report: AuditReport): string {
   const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
   const dqPart = report.dataQuality ? ` | **Data Quality**: ${report.dataQuality.score}/100` : '';
 
-  // Regulatory one-liner
+  // Regulatory one-liner (AAP-31: derived from compliance.all)
   let regLine = '';
-  if (report.regulatoryCompliance) {
-    const rc = report.regulatoryCompliance;
-    const regParts: string[] = [];
+  if (report.compliance) {
+    const all = report.compliance.all;
     const summarizeJurisdiction = (flags: RegulatoryFlag[]): string => {
       if (flags.some(f => f.severity === 'action-required')) return 'Action Required';
       if (flags.some(f => f.severity === 'clarification-needed')) return 'Needs Clarification';
       if (flags.some(f => f.severity === 'warning')) return 'Review';
       return 'Clear';
     };
-    regParts.push(`EU: ${summarizeJurisdiction(rc.eu)}`);
-    regParts.push(`US: ${summarizeJurisdiction(rc.us)}`);
-    regParts.push(`UK: ${summarizeJurisdiction(rc.uk)}`);
+    const regParts: string[] = [];
+    regParts.push(`EU: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('EU')))}`);
+    regParts.push(`US: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('US')))}`);
+    regParts.push(`UK: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('UK')))}`);
     regLine = `\n**Regulatory**: ${regParts.join(' | ')}`;
   }
 
@@ -129,9 +130,18 @@ function renderSummary(report: AuditReport): string {
 |------|---------|----------|
 | **${report.overallRiskLevel.toUpperCase()}** | ${systemCount} | ${findingsParts.join(', ')} |`;
 
+  let methodology = '';
+  if (report.compliance) {
+    const c = report.compliance as StructuredCompliance;
+    const activated = ((c as any).frameworksActivated ?? []) as string[];
+    const names = activated.map(id => frameworkShortName(id)).filter(Boolean);
+    const fwList = names.length > 0 ? names.join(', ') : 'see Regulatory Compliance section';
+    methodology = `\n\n> **Risk methodology** anchored to ${names.length} frameworks: ${fwList}. Mapping version: \`${c.mappingVersion}\`.`;
+  }
+
   return `## Executive Summary
 
-${dashboard}
+${dashboard}${methodology}
 
 ${report.summary}`;
 }
@@ -238,7 +248,53 @@ ${rows.join('\n')}`;
 
 // ─── Findings ───────────────────────────────────────────────────────────────
 
-function renderFindings(risks: Risk[]): string {
+/**
+ * Infer which compliance finding type best matches a risk by keyword matching
+ * on the risk's title and description. Returns the top-matching finding type
+ * or undefined if no strong match.
+ */
+function inferFindingType(risk: Risk): string | undefined {
+  const text = `${risk.title} ${risk.description}`.toLowerCase();
+  if (/permission|scope|access.?control|excessive|least.?privilege|oauth/i.test(text)) return 'excessive-access';
+  if (/write|irreversible|delete|create|modify|append/i.test(text)) return 'write-risk';
+  if (/pii|personal.?data|sensitive|privacy|data.?protection/i.test(text)) return 'sensitive-data';
+  if (/scope.?creep|purpose.?limit|beyond.*need|unnecessary/i.test(text)) return 'scope-creep';
+  if (/classif|decision|scor|rank|profil|bias|discriminat/i.test(text)) return 'decisions-about-people';
+  if (/regulat|compliance|health|hipaa|sector/i.test(text)) return 'regulatory-flags';
+  return undefined;
+}
+
+/**
+ * Get framework basis string for a finding type from the compliance flags.
+ * Returns top 3 mandatory framework controls, formatted as "GDPR Art. 25, SOC 2 CC6.6".
+ */
+function getFrameworkBasis(findingType: string, compliance?: StructuredCompliance): string {
+  if (!compliance) return '—';
+
+  const flags = (compliance.all as TypedRegulatoryFlag[]).filter(
+    (f: TypedRegulatoryFlag) => f.triggeredBy === findingType && f.tier === 'mandatory',
+  );
+
+  if (flags.length === 0) {
+    // Try voluntary if no mandatory
+    const volFlags = (compliance.all as TypedRegulatoryFlag[]).filter(
+      (f: TypedRegulatoryFlag) => f.triggeredBy === findingType,
+    );
+    if (volFlags.length === 0) return '—';
+    return volFlags.slice(0, 3).map(f => `${f.frameworkId === 'eu-ai-act' ? 'EU AI Act' : f.framework.split(' — ')[0]}`).join(', ');
+  }
+
+  // Show top 3 mandatory, framework name + first control ID
+  return flags.slice(0, 3).map(f => {
+    const name = f.frameworkId === 'eu-ai-act' ? 'EU AI Act' :
+                 f.frameworkId === 'eu-ai-act-high-risk' ? 'EU AI Act Annex III' :
+                 f.framework.split(' — ')[0];
+    const ctrl = (f.controlIds ?? [])[0] ?? '';
+    return ctrl ? `${name} ${ctrl}` : name;
+  }).join(', ');
+}
+
+function renderFindings(risks: Risk[], compliance?: StructuredCompliance): string {
   const allRisks = [...risks];
 
   const sorted = allRisks
@@ -246,14 +302,16 @@ function renderFindings(risks: Risk[]): string {
 
   const rows = sorted.map((r, i) => {
     const id = `HERON-${String(i + 1).padStart(3, '0')}`;
+    const findingType = inferFindingType(r);
+    const basis = findingType ? getFrameworkBasis(findingType, compliance) : '—';
     const remediation = r.mitigation ?? '—';
-    return `| ${id} | ${r.severity.toUpperCase()} | ${r.title} | ${r.description} | ${remediation} |`;
+    return `| ${id} | ${r.severity.toUpperCase()} | ${basis} | ${r.title} | ${r.description} | ${remediation} |`;
   }).join('\n');
 
   return `## Findings
 
-| ID | Severity | Finding | Description | Recommendation |
-|----|----------|---------|-------------|----------------|
+| ID | Severity | Framework Basis | Finding | Description | Recommendation |
+|----|----------|-----------------|---------|-------------|----------------|
 ${rows}`;
 }
 
@@ -383,37 +441,316 @@ ${items}
 </details>`;
 }
 
-// ─── Regulatory Compliance ──────────────────────────────────────────────────
+// ─── Regulatory Compliance (AAP-31) ────────────────────────────────────────
 
-function renderRegulatoryCompliance(compliance: RegulatoryCompliance): string {
-  const renderFlags = (flags: RegulatoryFlag[]): string => {
-    if (flags.length === 0) return 'No specific flags identified.';
-    return flags.map(f => {
-      const labels: Record<string, string> = {
-        'action-required': ' `ACTION REQUIRED`',
-        'warning': ' `REVIEW`',
-        'clarification-needed': ' `NEEDS CLARIFICATION`',
-      };
-      const label = labels[f.severity] ?? '';
-      return `- **${f.framework}**${label}\n  ${f.description}`;
-    }).join('\n\n');
+import type { RiskCategory } from '../compliance/types.js';
+
+const CATEGORIES: Array<{ key: RiskCategory; title: string }> = [
+  { key: 'privacy', title: 'Privacy' },
+  { key: 'ip', title: 'IP' },
+  { key: 'consumer-protection', title: 'Consumer Protection' },
+  { key: 'sector-specific', title: 'Sector-Specific' },
+];
+
+// ─── Applicability Summary Table ─────────────────────────────────────────
+
+/** Human-readable descriptions for why a framework didn't fire. */
+const NOT_TRIGGERED_REASONS: Record<string, string> = {
+  'hipaa': 'No health/covered-entity data detected',
+  'colorado-ai-act': 'No high-impact consequential decisions in 8 statutory domains',
+  'ccpa-cpra': 'No personal data signals detected',
+  'eu-ai-act-high-risk': 'No Annex III category signals detected (biometrics, employment, education, essential services, law enforcement)',
+  'gdpr': 'No personal data signals detected',
+  'uk-gdpr-dpa-2018': 'No personal data signals detected',
+  'eu-ai-act': 'No applicable signals detected',
+};
+
+/** Short applicability condition for mandatory frameworks that DID fire. */
+const APPLICABILITY_CONDITIONS: Record<string, string> = {
+  'gdpr': 'If you serve EU data subjects',
+  'uk-gdpr-dpa-2018': 'If you serve UK data subjects',
+  'eu-ai-act': 'If AI placed on EU market or outputs used in EU',
+  'eu-ai-act-high-risk': 'Annex III category matched — check Art. 6(3)',
+  'hipaa': 'If you are a HIPAA covered entity',
+  'colorado-ai-act': 'If you do business in Colorado',
+  'ccpa-cpra': 'If CA business thresholds met ($26.6M / 100K consumers)',
+};
+
+/** Map finding types to human-readable gap descriptions. */
+const GAP_LABELS: Record<string, string> = {
+  'excessive-access': 'Excessive permissions',
+  'write-risk': 'Write operation risks',
+  'sensitive-data': 'Data handling',
+  'scope-creep': 'Scope exceeds purpose',
+  'decisions-about-people': 'Automated decision-making',
+  'regulatory-flags': 'Regulatory concerns',
+};
+
+/** Excluded from gap counting — always fires as methodology anchor, not a real gap. */
+const GAP_EXCLUDED = new Set(['risk-score']);
+
+function getGaps(frameworkId: string, allFlags: TypedRegulatoryFlag[]): string[] {
+  const flags = allFlags.filter(f => f.frameworkId === frameworkId && !GAP_EXCLUDED.has(f.triggeredBy));
+  // Also exclude decisions-about-people when it says "No decisions" (impact = none)
+  const meaningful = flags.filter(f =>
+    !(f.triggeredBy === 'decisions-about-people' && /no decisions about people/i.test(f.description)),
+  );
+  const uniqueTypes = [...new Set(meaningful.map(f => f.triggeredBy))];
+  return uniqueTypes.map(t => GAP_LABELS[t] ?? t);
+}
+
+function formatGaps(gaps: string[]): { status: string; details: string } {
+  if (gaps.length === 0) return { status: '✅ No gaps', details: '—' };
+  return {
+    status: `⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''}`,
+    details: gaps.join(', '),
   };
+}
 
-  return `## Regulatory Compliance
+function renderApplicabilitySummary(c: StructuredCompliance): string {
+  const activated = new Set((c as any).frameworksActivated ?? []);
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
 
-> This section highlights potential regulatory implications based on interview data. It is advisory — consult qualified legal counsel for compliance decisions.
+  const mandatoryFrameworks: Array<{ id: string; name: string }> = [
+    { id: 'eu-ai-act', name: 'EU AI Act' },
+    { id: 'eu-ai-act-high-risk', name: 'EU AI Act — High-Risk (Annex III)' },
+    { id: 'gdpr', name: 'GDPR' },
+    { id: 'uk-gdpr-dpa-2018', name: 'UK GDPR / DPA 2018' },
+    { id: 'hipaa', name: 'HIPAA' },
+    { id: 'colorado-ai-act', name: 'Colorado AI Act (SB 24-205)' },
+    { id: 'ccpa-cpra', name: 'CCPA / CPRA' },
+  ];
 
-### EU (EU AI Act + GDPR)
+  const voluntaryFrameworks: Array<{ id: string; name: string }> = [
+    { id: 'nist-ai-rmf', name: 'NIST AI RMF' },
+    { id: 'iso-23894', name: 'ISO/IEC 23894' },
+    { id: 'iso-42001', name: 'ISO/IEC 42001' },
+    { id: 'soc-2', name: 'SOC 2' },
+  ];
 
-${renderFlags(compliance.eu)}
+  const mandatoryRows = mandatoryFrameworks.map(fw => {
+    const isActive = activated.has(fw.id);
+    if (!isActive) {
+      const reason = NOT_TRIGGERED_REASONS[fw.id] ?? 'No matching signals';
+      return `| ${fw.name} | ✅ Not applicable | ${reason} |`;
+    }
+    const gaps = getGaps(fw.id, allFlags);
+    if (gaps.length > 0) {
+      const condition = APPLICABILITY_CONDITIONS[fw.id] ?? '';
+      return `| ${fw.name} | ⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''} | ${gaps.join(', ')} — ${condition} |`;
+    }
+    const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
+    return `| ${fw.name} | ⚠️ Check | ${condition} |`;
+  });
 
-### US (SOC 2 + State AI Laws)
+  const voluntaryRows = voluntaryFrameworks.map(fw => {
+    const gaps = getGaps(fw.id, allFlags);
+    const { status, details } = formatGaps(gaps);
+    return `| ${fw.name} | ${status} | ${details} |`;
+  });
 
-${renderFlags(compliance.us)}
+  return `### Applicability Summary
 
-### UK (UK GDPR + ICO Guidance)
+| Framework | Status | Gaps Found |
+|-----------|--------|------------|
+| **Mandatory Law** | | |
+${mandatoryRows.join('\n')}
+| **Voluntary Frameworks** | | |
+${voluntaryRows.join('\n')}`;
+}
 
-${renderFlags(compliance.uk)}`;
+// ─── Finding-first detail (replaces framework-first tier sections) ────────
+
+/**
+ * Build agent-specific gap description from actual report data.
+ * Falls back to generic text if no specific context available.
+ */
+function buildGapDescription(findingType: string, report?: AuditReport): string {
+  const systems = report?.systems?.filter(isBusinessSystem) ?? [];
+  const systemNames = systems.map(s => s.systemId).join(', ');
+  const excessiveScopes = systems.flatMap(s => s.scopesDelta?.map(d => `${s.systemId}: ${d}`) ?? []);
+  const writes = systems.flatMap(s => s.writeOperations?.map(w => `${w.operation} → ${w.target}`) ?? []);
+  const hasIrreversible = systems.some(s => s.writeOperations?.some(w => !w.reversible));
+  const dataSensitivities = [...new Set(systems.map(s => s.dataSensitivity).filter(Boolean))];
+  const decisionDetails = report?.decisionMakingDetails ?? '';
+
+  switch (findingType) {
+    case 'excessive-access':
+      if (excessiveScopes.length > 0) {
+        return `Agent holds permissions beyond stated need on ${systems.length} system(s). Excessive scopes detected: ${excessiveScopes.slice(0, 3).join('; ')}${excessiveScopes.length > 3 ? ` (+${excessiveScopes.length - 3} more)` : ''}. Narrow each to the minimum required scope.`;
+      }
+      return `Agent holds permissions beyond stated need on ${systemNames || 'connected systems'}. Review and narrow scopes to the minimum required (least-privilege).`;
+
+    case 'write-risk':
+      if (writes.length > 0) {
+        const qualifier = hasIrreversible ? 'including irreversible operations' : 'all reported as reversible';
+        return `Agent performs ${writes.length} write operation(s) (${qualifier}): ${writes.slice(0, 3).join('; ')}${writes.length > 3 ? ` (+${writes.length - 3} more)` : ''}. Require approval, monitoring, and rollback paths for high-impact operations.`;
+      }
+      return 'Write operations detected that can affect users or downstream systems. Require approval, monitoring, and rollback paths.';
+
+    case 'sensitive-data':
+      if (dataSensitivities.length > 0) {
+        return `Agent processes ${dataSensitivities.join(', ')} data across ${systemNames || 'connected systems'}. Ensure lawful basis under GDPR Art. 6, data minimization (Art. 5(1)(c)), and breach-readiness (Art. 33).`;
+      }
+      return 'Agent processes personal data. Ensure lawful basis, data minimization, and breach-readiness.';
+
+    case 'scope-creep':
+      return `Requested scopes on ${systemNames || 'one or more systems'} exceed what is needed for the stated purpose. Review purpose-limitation (GDPR Art. 5(1)(b)) and change-management process.`;
+
+    case 'decisions-about-people':
+      if (decisionDetails) {
+        return `Agent makes or influences automated decisions affecting individuals: "${decisionDetails.slice(0, 150)}". Requires human oversight, contestability, transparency, and data-subject rights (GDPR Art. 22).`;
+      }
+      return 'Agent makes or influences automated decisions affecting individuals. Requires human oversight, contestability, transparency, and data-subject rights.';
+
+    case 'regulatory-flags':
+      return 'Agent may operate in a regulated domain. Clarify the agent\'s domain to determine sector-specific obligations.';
+
+    default:
+      return '';
+  }
+}
+
+/** Short framework display names for the "Affects" line. */
+function frameworkShortName(id: string): string {
+  const names: Record<string, string> = {
+    'eu-ai-act': 'EU AI Act',
+    'eu-ai-act-high-risk': 'EU AI Act (High-Risk)',
+    'gdpr': 'GDPR',
+    'uk-gdpr-dpa-2018': 'UK GDPR',
+    'hipaa': 'HIPAA',
+    'colorado-ai-act': 'Colorado AI Act',
+    'ccpa-cpra': 'CCPA',
+    'nist-ai-rmf': 'NIST',
+    'iso-23894': 'ISO 23894',
+    'iso-42001': 'ISO 42001',
+    'soc-2': 'SOC 2',
+  };
+  return names[id] ?? id;
+}
+
+function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport): string {
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
+
+  // Group flags by finding type (triggeredBy)
+  const byFinding = new Map<string, TypedRegulatoryFlag[]>();
+  for (const f of allFlags) {
+    if (GAP_EXCLUDED.has(f.triggeredBy)) continue;
+    if (f.triggeredBy === 'decisions-about-people' && /no decisions about people/i.test(f.description)) continue;
+    const arr = byFinding.get(f.triggeredBy) ?? [];
+    arr.push(f);
+    byFinding.set(f.triggeredBy, arr);
+  }
+
+  if (byFinding.size === 0) {
+    return `### Compliance Detail\n\n_No compliance gaps identified from current signals._\n`;
+  }
+
+  let out = `### Compliance Detail\n\n`;
+
+  for (const [findingType, flags] of byFinding) {
+    const label = GAP_LABELS[findingType] ?? findingType;
+    const description = buildGapDescription(findingType, report);
+
+    // Group controls by framework for compact "Affects" line
+    const byFramework = new Map<string, string[]>();
+    for (const f of flags) {
+      const fwName = frameworkShortName(f.frameworkId);
+      const existing = byFramework.get(fwName) ?? [];
+      for (const ctrl of (f.controlIds ?? [])) {
+        if (!existing.includes(ctrl)) existing.push(ctrl);
+      }
+      byFramework.set(fwName, existing);
+    }
+
+    const affectsParts = [...byFramework.entries()].map(([fw, ctrls]) =>
+      ctrls.length > 0 ? `${fw} (${ctrls.join(', ')})` : fw,
+    );
+
+    out += `#### ${label}\n\n`;
+    out += `${description}\n\n`;
+    out += `**Affects:** ${affectsParts.join(' · ')}\n\n`;
+  }
+
+  return out;
+}
+
+// ─── Obligations Requiring Further Review ─────────────────────────────────
+
+function renderObligationsChecklist(c: StructuredCompliance, report?: AuditReport): string {
+  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
+  const activated = new Set((c as any).frameworksActivated ?? []);
+  const rows: Array<{ obligation: string; action: string }> = [];
+
+  // GDPR-triggered obligations
+  const hasGdpr = activated.has('gdpr') || activated.has('uk-gdpr-dpa-2018');
+  if (hasGdpr) {
+    rows.push({ obligation: 'GDPR Art. 6', action: 'Decide and document WHY you are allowed to process this data (e.g. legitimate business interest — must document a balancing test)' });
+    rows.push({ obligation: 'GDPR Art. 13/14', action: 'Tell people you are collecting their data: what, why, how long, and their rights' });
+    rows.push({ obligation: 'GDPR Art. 15', action: 'Be ready to show someone all data you hold on them if they ask' });
+    rows.push({ obligation: 'GDPR Art. 17', action: 'Be ready to delete someone\'s data from all systems if they ask' });
+    rows.push({ obligation: 'GDPR Art. 21', action: 'Let people opt out of being profiled for sales/marketing — you must stop if they object' });
+    rows.push({ obligation: 'GDPR Art. 28', action: 'Sign data processing contracts with every service you send data to (Google, Apify, etc.)' });
+    rows.push({ obligation: 'GDPR Art. 30', action: 'Keep a written log of what personal data you process, why, and who has access' });
+    rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Set rules for how long you keep data — then actually delete it on schedule' });
+
+    const hasProfiling = allFlags.some(f => f.triggeredBy === 'decisions-about-people');
+    const hasLargeScale = (report?.systems?.length ?? 0) >= 3;
+    if (hasProfiling || hasLargeScale) {
+      rows.push({ obligation: 'GDPR Art. 35', action: 'Do a privacy impact assessment before going live (you profile people at scale — this is likely required)' });
+    }
+
+    rows.push({ obligation: 'GDPR Arts. 44-49', action: 'If data leaves EU (e.g. to US-based Google/Apify), you need a legal basis for that transfer' });
+  }
+
+  // CCPA
+  if (activated.has('ccpa-cpra')) {
+    rows.push({ obligation: 'CCPA', action: 'Check if California privacy law applies to you: >$26.6M revenue, or >100K CA users, or >50% revenue from selling personal data' });
+  }
+
+  // Automated decisions
+  const hasDecisions = allFlags.some(f =>
+    f.triggeredBy === 'decisions-about-people' && !/no decisions about people/i.test(f.description),
+  );
+  if (hasDecisions) {
+    rows.push({ obligation: 'GDPR Art. 22', action: 'If AI makes decisions about people: ensure a human can review, people can contest, and the logic is explainable' });
+  }
+
+  // Always applicable
+  rows.push({ obligation: 'Credentials', action: 'Store API keys/tokens in a secrets manager (not in code or env files), rotate them regularly' });
+  rows.push({ obligation: 'Platform ToS', action: 'Check you are not violating the rules of LinkedIn, Google, or other connected services (scraping, rate limits, usage policies)' });
+  rows.push({ obligation: 'Incident response', action: 'Have a plan: if data leaks, who do you notify and within what timeframe? (EU: 72 hours to regulator)' });
+
+  if (rows.length === 0) return '';
+
+  const tableRows = rows.map(r => `| ${r.obligation} | ${r.action} |`).join('\n');
+
+  return `### Obligations Requiring Further Review
+
+The following cannot be assessed from this interview alone — the deployer must address independently:
+
+| Obligation | Action Required |
+|------------|-----------------|
+${tableRows}`;
+}
+
+export function renderStructuredCompliance(c: StructuredCompliance, report?: AuditReport): string {
+  return [
+    `## Regulatory Compliance`,
+    ``,
+    `### Methodology`,
+    ``,
+    `Findings are anchored to NIST AI RMF 1.0, ISO/IEC 23894, ISO/IEC 42001, EU AI Act 2024/1689, GDPR 2016/679, UK GDPR/DPA 2018, HIPAA, SOC 2 TSC 2017, Colorado AI Act SB 24-205, and CCPA/CPRA. Mapping version: \`${c.mappingVersion}\`. Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
+    ``,
+    renderApplicabilitySummary(c),
+    ``,
+    renderFindingFirstDetail(c, report),
+    renderObligationsChecklist(c, report),
+  ].join('\n');
+}
+
+function renderRegulatoryCompliance(compliance: StructuredCompliance, report?: AuditReport): string {
+  return renderStructuredCompliance(compliance, report);
 }
 
 // ─── Disclaimer ─────────────────────────────────────────────────────────────

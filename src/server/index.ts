@@ -439,7 +439,8 @@ function markdownToHtml(md: string): string {
   // Horizontal rules
   html = html.replace(/^---$/gm, '<hr>');
 
-  // Headers
+  // Headers (most specific first — #### before ### before ## before #)
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');

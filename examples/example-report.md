@@ -179,43 +179,105 @@ The agent described an automatically running educational content pipeline that r
 
 ## Regulatory Compliance
 
-> This section highlights potential regulatory implications based on interview data. It is advisory — consult qualified legal counsel for compliance decisions.
+### Methodology
 
-### EU (EU AI Act + GDPR)
+Findings are anchored to NIST AI RMF 1.0, ISO/IEC 23894, ISO/IEC 42001, EU AI Act 2024/1689, GDPR 2016/679, UK GDPR/DPA 2018, HIPAA, SOC 2 TSC 2017, Colorado AI Act SB 24-205, and CCPA/CPRA. Mapping version: `aap-31.2026-04-15`. Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.
 
-- **EU AI Act**
-  Agent does not make automated decisions about people in this deployment. Likely outside the high-risk classification under Annex III. Re-evaluate if the agent is later extended to influence decisions with legal or similarly significant effects.
+### Mandatory Law
 
-- **GDPR**
-  Limited personal data processing detected — Telegram chat IDs and bot metadata function as operational identifiers. GDPR applies in a narrow scope: lawful basis likely legitimate interest (Art. 6). DPIA not required for this data class.
+#### Privacy
 
-- **GDPR Article 25** `REVIEW`
-  Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — GDPR requires data protection by design and by default (data minimization principle).
+- **GDPR — Art. 25** *(indicative mapping)*
+  Agent holds permissions beyond stated need. Activates GDPR controls (Art. 25) (indicative mapping). Narrow scopes to the minimum required. Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).
 
-### US (SOC 2 + State AI Laws)
+- **GDPR — Art. 6, Art. 35, Art. 33** *(indicative mapping)*
+  Agent processes personal data. Activates GDPR controls (Art. 6, Art. 35, Art. 33) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness. Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).
 
-- **SOC 2**
-  SOC 2 control mapping: Agent identity (CC1), system access (CC6.1), auth (CC6.2), permissions (CC6.3), data sensitivity (CC6.7), write operations (CC8.1). Least privilege violation at CC6.3 — narrow scopes to minimum needed.
+- **GDPR — Art. 5(1)(b)** *(indicative mapping)*
+  Requested scopes exceed stated needs across one or more systems. Activates GDPR controls (Art. 5(1)(b)) (indicative mapping). Review purpose-limitation and change-management process. Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).
 
-- **Colorado AI Act (SB 24-205)**
-  Agent does not make consequential decisions about individuals in this deployment. Colorado AI Act likely does not apply at present. Re-evaluate if scope expands to employment, credit, insurance, housing, education, or healthcare decisioning.
+- **UK GDPR / DPA 2018 — Art. 25** *(indicative mapping)*
+  Agent holds permissions beyond stated need. Activates UK GDPR / DPA 2018 controls (Art. 25) (indicative mapping). Narrow scopes to the minimum required. Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).
 
-- **HIPAA**
-  No protected health information detected in the main content pipeline. HIPAA likely does not apply.
+- **UK GDPR / DPA 2018 — Art. 6, Art. 35, Art. 33** *(indicative mapping)*
+  Agent processes personal data. Activates UK GDPR / DPA 2018 controls (Art. 6, Art. 35, Art. 33) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness. Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).
 
-- **SOC 2 CC7.2 / CC8.1** `REVIEW`
-  Irreversible write operations detected. SOC 2 requires anomaly monitoring and change approval workflows for high-impact operations.
+- **UK GDPR / DPA 2018 — Art. 5(1)(b)** *(indicative mapping)*
+  Requested scopes exceed stated needs across one or more systems. Activates UK GDPR / DPA 2018 controls (Art. 5(1)(b)) (indicative mapping). Review purpose-limitation and change-management process. Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).
 
-### UK (UK GDPR + ICO Guidance)
+- **CCPA / CPRA — §1798.100, §1798.105, §1798.121** *(indicative mapping)*
+  Agent processes personal data. Activates CCPA / CPRA controls (§1798.100, §1798.105, §1798.121) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness. Applies if business meets CCPA thresholds (>$26,625,000 annual gross revenue per § 1798.140(d)(1)(A) CPI-adjusted via § 1798.199.95(d); OR ≥100K CA consumers/households; OR ≥50% revenue from selling/sharing PI) AND processes data of California residents. ADMT operational obligations effective 2027-01-01.
 
-- **UK GDPR / DPA 2018**
-  Limited personal data processing detected — Telegram chat IDs and bot metadata function as operational identifiers. UK GDPR applies in a narrow scope: lawful basis likely legitimate interest. DPIA not required for this data class.
+#### Consumer Protection
 
-- **ICO AI Risk Toolkit**
-  Agent does not make automated decisions about people in this deployment. Full ICO AI accountability framework likely does not apply. Re-evaluate if scope expands to people-related decisioning.
+- **EU AI Act — Applicable — Art. 14(4)(d), Art. 9(6)-(7)** *(indicative mapping)*
+  Irreversible write operations detected. Activates EU AI Act — Applicable controls (Art. 14(4)(d), Art. 9(6)-(7)) (indicative mapping). Require approval, monitoring, and rollback paths for high-impact operations. Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.
 
-- **UK GDPR Article 25** `REVIEW`
-  Agent holds more permissions than its stated purpose requires. Narrow scopes to the minimum needed — UK GDPR data protection by design principle.
+- **EU AI Act — Applicable — Art. 9(1), Art. 72, Art. 11** *(indicative mapping)*
+  Requested scopes exceed stated needs across one or more systems. Activates EU AI Act — Applicable controls (Art. 9(1), Art. 72, Art. 11) (indicative mapping). Review purpose-limitation and change-management process. Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.
+
+- **EU AI Act — Applicable — Art. 9(2)(b), Art. 9(8)** *(indicative mapping)*
+  Overall risk rating is anchored to EU AI Act — Applicable risk-management controls (Art. 9(2)(b), Art. 9(8)) (indicative mapping). See Methodology. Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.
+
+- **EU AI Act — Applicable — Art. 50(1), Art. 14(4)(d)** *(indicative mapping)*
+  No decisions about people detected. EU AI Act — Applicable controls (Art. 50(1), Art. 14(4)(d)) listed for reference (indicative mapping). Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.
+
+- **GDPR — Art. 22** *(indicative mapping)*
+  No decisions about people detected. GDPR controls (Art. 22) listed for reference (indicative mapping). Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).
+
+- **UK GDPR / DPA 2018 — Art. 22** *(indicative mapping)*
+  No decisions about people detected. UK GDPR / DPA 2018 controls (Art. 22) listed for reference (indicative mapping). Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).
+
+### Voluntary Frameworks
+
+#### Privacy
+
+- **NIST AI RMF — MAP 3.2, GOVERN 6.1, MEASURE 2.7, MANAGE 1.2** *(indicative mapping)*
+  Agent holds permissions beyond stated need. Activates NIST AI RMF controls (MAP 3.2, GOVERN 6.1, MEASURE 2.7, MANAGE 1.2) (indicative mapping). Narrow scopes to the minimum required.
+
+- **NIST AI RMF — MEASURE 2.10, GOVERN 1.1, MAP 5.1** *(indicative mapping)*
+  Agent processes personal data. Activates NIST AI RMF controls (MEASURE 2.10, GOVERN 1.1, MAP 5.1) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness.
+
+- **ISO/IEC 42001 — A.6.2.6, A.6.2.5, A.9.2** *(indicative mapping)*
+  Agent holds permissions beyond stated need. Activates ISO/IEC 42001 controls (A.6.2.6, A.6.2.5, A.9.2) (indicative mapping). Narrow scopes to the minimum required.
+
+- **ISO/IEC 42001 — A.7.4, A.7.5, A.5.4** *(indicative mapping)*
+  Agent processes personal data. Activates ISO/IEC 42001 controls (A.7.4, A.7.5, A.5.4) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness.
+
+- **ISO/IEC 23894 — Clause 6.4.3** *(indicative mapping)*
+  Agent holds permissions beyond stated need. Activates ISO/IEC 23894 controls (Clause 6.4.3) (indicative mapping). Narrow scopes to the minimum required.
+
+- **ISO/IEC 23894 — Clause 6.4.2** *(indicative mapping)*
+  Agent processes personal data. Activates ISO/IEC 23894 controls (Clause 6.4.2) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness.
+
+- **SOC 2 — CC6.5, P1.1, P3.1, P4.1, P4.2, P4.3, C1.1, C1.2** *(indicative mapping)*
+  Agent processes personal data. Activates SOC 2 controls (CC6.5, P1.1, P3.1, P4.1, P4.2, P4.3, C1.1, C1.2) (indicative mapping). Ensure lawful basis, data minimization, and breach-readiness.
+
+#### Consumer Protection
+
+- **NIST AI RMF — MAP 3.5, MANAGE 2.4, GOVERN 1.7** *(indicative mapping)*
+  Irreversible write operations detected. Activates NIST AI RMF controls (MAP 3.5, MANAGE 2.4, GOVERN 1.7) (indicative mapping). Require approval, monitoring, and rollback paths for high-impact operations.
+
+- **NIST AI RMF — MEASURE 1.1, MANAGE 1.2** *(indicative mapping)*
+  Overall risk rating is anchored to NIST AI RMF risk-management controls (MEASURE 1.1, MANAGE 1.2) (indicative mapping). See Methodology.
+
+- **NIST AI RMF — GOVERN 1.1, MAP 4.1** *(indicative mapping)*
+  No decisions about people detected. NIST AI RMF controls (GOVERN 1.1, MAP 4.1) listed for reference (indicative mapping).
+
+- **SOC 2 — CC5.1, CC7.2, CC7.4, PI1.3** *(indicative mapping)*
+  Irreversible write operations detected. Activates SOC 2 controls (CC5.1, CC7.2, CC7.4, PI1.3) (indicative mapping). Require approval, monitoring, and rollback paths for high-impact operations.
+
+- **SOC 2 — CC3.3** *(indicative mapping)*
+  Overall risk rating is anchored to SOC 2 risk-management controls (CC3.3) (indicative mapping). See Methodology.
+
+- **SOC 2 — CC3.3** *(indicative mapping)*
+  No decisions about people detected. SOC 2 controls (CC3.3) listed for reference (indicative mapping).
+
+- **ISO/IEC 42001 — A.6.2.4, A.6.2.8, A.5.3** *(indicative mapping)*
+  Irreversible write operations detected. Activates ISO/IEC 42001 controls (A.6.2.4, A.6.2.8, A.5.3) (indicative mapping). Require approval, monitoring, and rollback paths for high-impact operations.
+
+- **ISO/IEC 23894 — Clause 6.5** *(indicative mapping)*
+  Irreversible write operations detected. Activates ISO/IEC 23894 controls (Clause 6.5) (indicative mapping). Require approval, monitoring, and rollback paths for high-impact operations.
 
 ---
 

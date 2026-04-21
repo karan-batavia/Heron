@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CategorizedCompliance } from '../compliance/mapper.js';
 
 // ─── Severity & Blast Radius enums ──────────────────────────────────────────
 
@@ -170,13 +171,28 @@ export interface RegulatoryFlag {
   framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "SOC 2 CC6.1"
   severity: 'info' | 'warning' | 'action-required' | 'clarification-needed';
   description: string;
+  /** AAP-31: control IDs activated by this finding (optional for legacy flags). */
+  controlIds?: string[];
+  /** AAP-31: risk category. */
+  category?: 'privacy' | 'ip' | 'consumer-protection' | 'sector-specific';
+  /** AAP-31: mandatory vs voluntary tier. */
+  tier?: 'mandatory' | 'voluntary';
+  /** AAP-31: jurisdictions where the framework is mandatory. */
+  mandatoryIn?: ReadonlyArray<'EU' | 'UK' | 'US' | 'global'>;
+  /** AAP-31: human-readable jurisdictional scope clarification. */
+  scopeNote?: string;
 }
 
-export interface RegulatoryCompliance {
-  eu: RegulatoryFlag[];
-  us: RegulatoryFlag[];
-  uk: RegulatoryFlag[];
+/** AAP-31: per-category buckets under mandatory / voluntary tiers. */
+export interface CategorizedBucket {
+  privacy: RegulatoryFlag[];
+  ip: RegulatoryFlag[];
+  'consumer-protection': RegulatoryFlag[];
+  'sector-specific': RegulatoryFlag[];
 }
+
+/** AAP-31: replaces legacy RegulatoryCompliance {eu, us, uk} on AuditReport. */
+export type StructuredCompliance = CategorizedCompliance;
 
 // ─── Audit Report ───────────────────────────────────────────────────────────
 
@@ -197,7 +213,7 @@ export const auditReportSchema = z.object({
   dataQuality: dataQualitySchema.optional(),
   makesDecisionsAboutPeople: z.boolean().optional(),
   decisionMakingDetails: z.string().optional(),
-  regulatoryCompliance: z.any().optional(), // RegulatoryCompliance (not Zod-validated, computed post-analysis)
+  compliance: z.any().optional(), // StructuredCompliance (CategorizedCompliance, not Zod-validated)
   metadata: z.object({
     date: z.string(),
     target: z.string(),
@@ -206,5 +222,5 @@ export const auditReportSchema = z.object({
   }),
 });
 export type AuditReport = z.infer<typeof auditReportSchema> & {
-  regulatoryCompliance?: RegulatoryCompliance;
+  compliance?: StructuredCompliance;
 };
