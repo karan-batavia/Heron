@@ -3,6 +3,8 @@ import {
   mapFindingsToRiskCategories,
   detectSignals,
   classifyDecisionImpact,
+  classifyEUAIAct,
+  type MapperInput,
 } from '../../src/compliance/mapper.js';
 import { MAPPING_VERSION } from '../../src/compliance/types.js';
 import { CONTROL_MAPPINGS } from '../../src/compliance/control-mappings.js';
@@ -39,57 +41,70 @@ const tx = (answers: string[]): QAPair[] =>
 
 // ─── Registry shape ─────────────────────────────────────────────────────────
 
-describe('frameworks registry', () => {
-  it('registers all AAP-30 + AAP-31 frameworks', () => {
-    const ids = Object.keys(FRAMEWORKS);
-    // AAP-30 originals
-    expect(ids).toContain('eu-ai-act');
-    expect(ids).toContain('gdpr');
-    expect(ids).toContain('nist-ai-rmf');
-    expect(ids).toContain('iso-23894');
-    expect(ids).toContain('iso-42001');
-    expect(ids).toContain('soc-2');
-    // AAP-31 restored (nyc-ll144 and ico-ai-toolkit removed from v1 scope)
-    expect(ids).toContain('uk-gdpr-dpa-2018');
-    expect(ids).toContain('colorado-ai-act');
-    expect(ids).toContain('hipaa');
-    expect(ids).toContain('ccpa-cpra');
+describe('frameworks registry (post-AAP-42 scope cut)', () => {
+  it('contains exactly the 3 v1 frameworks', () => {
+    const ids = Object.keys(FRAMEWORKS).sort();
+    expect(ids).toEqual(['eu-ai-act', 'gdpr', 'iso-42001']);
   });
 
-  it('uses Jurisdiction[] for mandatoriness, not booleans', () => {
+  it('uses Jurisdiction[] for mandatoriness', () => {
     for (const f of Object.values(FRAMEWORKS)) {
       expect(Array.isArray(f.mandatoryIn)).toBe(true);
     }
     expect(FRAMEWORKS['eu-ai-act'].mandatoryIn).toContain('EU');
     expect(FRAMEWORKS.gdpr.mandatoryIn).toContain('EU');
-    expect(FRAMEWORKS['uk-gdpr-dpa-2018'].mandatoryIn).toContain('UK');
-    expect(FRAMEWORKS['nist-ai-rmf'].mandatoryIn).toEqual([]);
-  });
-
-  it('models US-state laws as US with a scopeNote', () => {
-    expect(FRAMEWORKS['colorado-ai-act'].mandatoryIn).toEqual(['US']);
-    expect(FRAMEWORKS['colorado-ai-act'].scopeNote).toMatch(/colorado/i);
-    expect(FRAMEWORKS['hipaa'].mandatoryIn).toEqual(['US']);
-    expect(FRAMEWORKS['hipaa'].scopeNote).toMatch(/covered entit/i);
-    expect(FRAMEWORKS['ccpa-cpra'].mandatoryIn).toEqual(['US']);
-    expect(FRAMEWORKS['ccpa-cpra'].scopeNote).toMatch(/california/i);
+    expect(FRAMEWORKS['iso-42001'].mandatoryIn).toEqual([]);
   });
 
   it('partitions cleanly into mandatory + voluntary', () => {
     const m = listMandatoryFrameworks().map((f) => f.id);
     const v = listVoluntaryFrameworks().map((f) => f.id);
-    expect(m).toContain('eu-ai-act');
-    expect(m).toContain('colorado-ai-act');
-    expect(v).toContain('nist-ai-rmf');
-    // No overlap
+    expect(m).toEqual(expect.arrayContaining(['eu-ai-act', 'gdpr']));
+    expect(v).toEqual(['iso-42001']);
     for (const id of m) expect(v).not.toContain(id);
   });
 
-  it('frameworksFor(UK) includes UK GDPR', () => {
-    const uk = frameworksFor('UK').map((f) => f.id);
-    expect(uk).toContain('uk-gdpr-dpa-2018');
-    expect(uk).not.toContain('eu-ai-act');
+  it('frameworksFor(EU) includes EU AI Act and GDPR', () => {
+    const eu = frameworksFor('EU').map((f) => f.id);
+    expect(eu).toContain('eu-ai-act');
+    expect(eu).toContain('gdpr');
   });
+
+  it('every framework has a primarySource URL', () => {
+    for (const [id, f] of Object.entries(FRAMEWORKS)) {
+      expect(f.primarySource, `framework ${id}`).toBeTruthy();
+      expect(f.primarySource, `framework ${id}`).toMatch(/^https?:\/\//);
+    }
+  });
+});
+
+// ─── Deprecated frameworks fully removed ────────────────────────────────────
+
+describe('Removed frameworks (AAP-42 scope cut)', () => {
+  const removed = [
+    'uk-gdpr-dpa-2018',
+    'colorado-ai-act',
+    'hipaa',
+    'ccpa-cpra',
+    'nist-ai-rmf',
+    'iso-23894',
+    'soc-2',
+    'eu-ai-act-high-risk',
+    'nyc-ll144',
+    'ico-ai-toolkit',
+  ];
+
+  for (const id of removed) {
+    it(`registry does not contain ${id}`, () => {
+      expect(FRAMEWORKS).not.toHaveProperty(id);
+    });
+    it(`no CONTROL_MAPPINGS reference ${id}`, () => {
+      for (const mapping of Object.values(CONTROL_MAPPINGS)) {
+        const ids = mapping.controls.map((c) => c.frameworkId);
+        expect(ids).not.toContain(id);
+      }
+    });
+  }
 });
 
 // ─── control-mappings shape ─────────────────────────────────────────────────
@@ -115,29 +130,40 @@ describe('control-mappings table', () => {
     }
   });
 
-  it('sensitive-data activates HIPAA, CCPA, UK GDPR controls', () => {
+  it('sensitive-data activates EU AI Act, GDPR, ISO 42001', () => {
     const ids = CONTROL_MAPPINGS['sensitive-data'].controls.map((c) => c.frameworkId);
-    expect(ids).toContain('hipaa');
-    expect(ids).toContain('ccpa-cpra');
-    expect(ids).toContain('uk-gdpr-dpa-2018');
+    expect(ids).toContain('eu-ai-act');
+    expect(ids).toContain('gdpr');
+    expect(ids).toContain('iso-42001');
   });
 
-  it('decisions-about-people activates Colorado AI Act (CCPA removed from this path in v1)', () => {
-    const ids = CONTROL_MAPPINGS['decisions-about-people'].controls.map((c) => c.frameworkId);
-    expect(ids).toContain('colorado-ai-act');
-    // CCPA ADMT sub-flag deferred to v2 (effective 2027-01-01); base CCPA flag
-    // fires only via sensitive-data path. No ccpa-cpra row here.
-    expect(ids).not.toContain('ccpa-cpra');
+  it('decisions-about-people activates EU AI Act (base + annexIII) and GDPR', () => {
+    const ctrls = CONTROL_MAPPINGS['decisions-about-people'].controls;
+    const ids = ctrls.map((c) => c.frameworkId);
+    expect(ids).toContain('eu-ai-act');
+    expect(ids).toContain('gdpr');
+    // Some EU AI Act controls are Annex III-gated (only fire on high-risk)
+    expect(ctrls.some((c) => c.frameworkId === 'eu-ai-act' && c.annexIII === true)).toBe(true);
+    // Some are baseline (always fire)
+    expect(ctrls.some((c) => c.frameworkId === 'eu-ai-act' && !c.annexIII)).toBe(true);
+  });
+
+  it('every FrameworkControl has a non-empty note', () => {
+    for (const [findingType, mapping] of Object.entries(CONTROL_MAPPINGS)) {
+      for (const ctrl of mapping.controls) {
+        expect(ctrl.note, `${findingType} / ${ctrl.frameworkId} / ${ctrl.controlId}`).toBeTruthy();
+      }
+    }
   });
 });
 
 // ─── mapFindingsToRiskCategories ────────────────────────────────────────────
 
 describe('mapFindingsToRiskCategories', () => {
-  it('stamps mapping version and starts AAP-31', () => {
+  it('stamps mapping version (AAP-42)', () => {
     const r = mapFindingsToRiskCategories({ systems: [], transcript: [] });
     expect(r.mappingVersion).toBe(MAPPING_VERSION);
-    expect(r.mappingVersion).toMatch(/^aap-31/);
+    expect(r.mappingVersion).toMatch(/^aap-42/);
   });
 
   it('produces mandatory + voluntary buckets with 4 categories each', () => {
@@ -160,118 +186,18 @@ describe('mapFindingsToRiskCategories', () => {
     });
     expect(r.all.length).toBeGreaterThan(0);
     for (const f of r.all) {
-      // Each flag description should mention its framework (indicative mapping note
-      // is now only in the Methodology section, not per-flag)
       expect(f.description.length).toBeGreaterThan(20);
     }
   });
 
-  it('fires HIPAA only when health signals are present', () => {
-    const without = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['names, emails, sales pipeline']),
-    });
-    expect(without.frameworksActivated).not.toContain('hipaa');
-
-    const withHealth = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['We sync patient medical records to our EHR system']),
-    });
-    expect(withHealth.frameworksActivated).toContain('hipaa');
-  });
-
-  it('fires Colorado AI Act for high-impact decisions, not generic outreach', () => {
-    const sales = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['scores leads for sales outreach']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'We score leads and rank them for sales outreach campaigns',
-    });
-    expect(sales.frameworksActivated).not.toContain('colorado-ai-act');
-
-    const hiring = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['screens job applicants']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails:
-        'We screen candidates for hiring decisions and recommend approve or reject',
-    });
-    expect(hiring.frameworksActivated).toContain('colorado-ai-act');
-  });
-
-  it('fires CCPA for sensitive PII and ADMT', () => {
+  it('attaches euAiActClassification to every audit output', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
-      transcript: tx(['We collect SSN and bank account data']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'Approves or denies loan applications using credit scoring',
+      transcript: tx(['name email PII']),
     });
-    expect(r.frameworksActivated).toContain('ccpa-cpra');
-  });
-
-  it('fires UK GDPR / DPA 2018 whenever PII is processed', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['Processes customer name, email, and phone']),
-    });
-    expect(r.frameworksActivated).toContain('uk-gdpr-dpa-2018');
-  });
-
-  it('places restored mandatory frameworks in the mandatory bucket', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['EHR with patient health records, names, emails, ssn']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screens job applicants and makes hiring decisions',
-    });
-    const mandIds = new Set(
-      [
-        ...r.mandatory.privacy,
-        ...r.mandatory['consumer-protection'],
-        ...r.mandatory['sector-specific'],
-        ...r.mandatory.ip,
-      ].map((f) => f.frameworkId),
-    );
-    expect(mandIds.has('hipaa')).toBe(true);
-    expect(mandIds.has('colorado-ai-act')).toBe(true);
-    expect(mandIds.has('ccpa-cpra')).toBe(true);
-    expect(mandIds.has('uk-gdpr-dpa-2018')).toBe(true);
-  });
-
-  it('categorizes restored frameworks per the AAP-31 spec', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['EHR patient health records with name, email, phone PII']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screens candidates and rejects unqualified applicants for hiring',
-    });
-
-    // Colorado AI Act → consumer-protection (high-impact decisions)
-    expect(
-      r.mandatory['consumer-protection'].some((f) => f.frameworkId === 'colorado-ai-act'),
-    ).toBe(true);
-
-    // HIPAA → sector-specific (health)
-    expect(
-      r.mandatory['sector-specific'].some((f) => f.frameworkId === 'hipaa'),
-    ).toBe(true);
-
-    // CCPA → privacy (California PII)
-    expect(r.mandatory.privacy.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(true);
-
-    // UK GDPR → privacy (UK data subjects)
-    expect(r.mandatory.privacy.some((f) => f.frameworkId === 'uk-gdpr-dpa-2018')).toBe(true);
-  });
-
-  it('flags carry mandatoryIn jurisdictions and scopeNote where applicable', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['EHR patient health records']),
-    });
-    const hipaa = r.all.find((f) => f.frameworkId === 'hipaa');
-    expect(hipaa).toBeDefined();
-    expect(hipaa!.mandatoryIn).toEqual(['US']);
-    expect(hipaa!.scopeNote).toBeTruthy();
+    expect(r.euAiActClassification).toBeDefined();
+    expect(['prohibited', 'high-risk', 'limited', 'minimal', 'unclassified'])
+      .toContain(r.euAiActClassification.classification);
   });
 });
 
@@ -306,65 +232,6 @@ describe('detectSignals', () => {
     );
     expect(s.hasEmploymentDecisions).toBe(true);
     expect(s.decisionImpact).toBe('high');
-  });
-});
-
-describe('detectSignals — new AAP-31 signals', () => {
-  describe('hasCoveredEntitySignal (HIPAA)', () => {
-    it('matches EHR/EMR vocabulary', () => {
-      const s = detectSignals(
-        [],
-        tx(['We integrate with EHR systems and process PHI']),
-        false,
-      );
-      expect(s.hasCoveredEntitySignal).toBe(true);
-    });
-
-    it('matches "covered entity" phrase', () => {
-      const s = detectSignals([], tx(['We are a HIPAA covered entity']), false);
-      expect(s.hasCoveredEntitySignal).toBe(true);
-    });
-
-    it('does not fire on generic "health data"', () => {
-      const s = detectSignals([], tx(['We process user health data']), false);
-      expect(s.hasCoveredEntitySignal).toBe(false);
-    });
-
-    it('does not fire on wellness/fitness context', () => {
-      const s = detectSignals([], tx(['fitness tracker wellness app']), false);
-      expect(s.hasCoveredEntitySignal).toBe(false);
-    });
-  });
-
-  describe('hasConsequentialDecisionSignal (Colorado 8 domains)', () => {
-    it('matches employment morphological variants', () => {
-      expect(detectSignals([], tx(['hire candidates']), true, 'screening applicants').hasConsequentialDecisionSignal).toBe(true);
-      expect(detectSignals([], tx([]), true, 'hiring').hasConsequentialDecisionSignal).toBe(true);
-    });
-    it('matches credit/lending', () => {
-      expect(detectSignals([], tx(['loan underwriting']), true, 'credit decisions').hasConsequentialDecisionSignal).toBe(true);
-    });
-    it('matches housing', () => {
-      expect(detectSignals([], tx([]), true, 'rental application decisions').hasConsequentialDecisionSignal).toBe(true);
-    });
-    it('matches insurance', () => {
-      expect(detectSignals([], tx([]), true, 'insurance claim denial').hasConsequentialDecisionSignal).toBe(true);
-    });
-    it('does not fire on generic customer service', () => {
-      expect(detectSignals([], tx(['answer customer questions']), true, 'reply to queries').hasConsequentialDecisionSignal).toBe(false);
-    });
-  });
-
-  describe('hasSignificantDecisionSignal (CCPA 5 domains)', () => {
-    it('matches CCPA significant-decision domains', () => {
-      expect(detectSignals([], tx([]), true, 'credit scoring').hasSignificantDecisionSignal).toBe(true);
-      expect(detectSignals([], tx([]), true, 'school admission').hasSignificantDecisionSignal).toBe(true);
-    });
-    it('does not fire on insurance context (outside CCPA 5 domains)', () => {
-      expect(
-        detectSignals([], tx([]), true, 'insurer coverage denial').hasSignificantDecisionSignal,
-      ).toBe(false);
-    });
   });
 
   describe('hasBiometricSignal (Annex III §1)', () => {
@@ -410,28 +277,7 @@ describe('detectSignals — new AAP-31 signals', () => {
   });
 });
 
-describe('Framework registry — deprecated entries removed', () => {
-  it('does not include nyc-ll144', () => {
-    expect(FRAMEWORKS).not.toHaveProperty('nyc-ll144');
-  });
-  it('does not include ico-ai-toolkit', () => {
-    expect(FRAMEWORKS).not.toHaveProperty('ico-ai-toolkit');
-  });
-  it('no CONTROL_MAPPINGS reference nyc-ll144', () => {
-    for (const mapping of Object.values(CONTROL_MAPPINGS)) {
-      const ids = mapping.controls.map((c) => c.frameworkId);
-      expect(ids).not.toContain('nyc-ll144');
-    }
-  });
-  it('no CONTROL_MAPPINGS reference ico-ai-toolkit', () => {
-    for (const mapping of Object.values(CONTROL_MAPPINGS)) {
-      const ids = mapping.controls.map((c) => c.frameworkId);
-      expect(ids).not.toContain('ico-ai-toolkit');
-    }
-  });
-});
-
-describe('hasEmploymentDecisions — plural/gerund matching (regex bug fix)', () => {
+describe('hasEmploymentDecisions — plural/gerund matching', () => {
   it('matches "hiring" (gerund)', () => {
     expect(detectSignals([], tx([]), true, 'hiring decisions').hasEmploymentDecisions).toBe(true);
   });
@@ -446,263 +292,156 @@ describe('hasEmploymentDecisions — plural/gerund matching (regex bug fix)', ()
   });
 });
 
-describe('Colorado AI Act scope-gate', () => {
-  const baseInput = {
-    systems: [baseSystem()],
-    transcript: tx(['hire candidates']),
-    makesDecisionsAboutPeople: true,
-  };
+// ─── EU AI Act classification (replaces former two-entry split) ─────────────
 
-  it('fires on decisionImpact=high + consequential signal', () => {
-    const r = mapFindingsToRiskCategories({
-      ...baseInput,
-      decisionMakingDetails: 'screen candidates and make hiring decisions',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
+describe('classifyEUAIAct', () => {
+  const baseSignals = () =>
+    detectSignals([], tx([]), false);
+
+  it('defaults to limited-risk when no Annex III signals match', () => {
+    const s = detectSignals([], tx(['name email PII for sales outreach']), false);
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('limited');
+    expect(cls.annexIIICategories).toEqual([]);
   });
 
-  it('does NOT fire on decisionImpact=medium (generic scoring)', () => {
-    const r = mapFindingsToRiskCategories({
-      ...baseInput,
-      decisionMakingDetails: 'rank leads for sales outreach',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
+  it('classifies high-risk with §1 category when biometric + sensitive PII detected', () => {
+    const s = detectSignals(
+      [],
+      tx(['facial recognition with ssn government id']),
+      false,
+    );
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('high-risk');
+    expect(cls.annexIIICategories.some((c) => c.includes('§1'))).toBe(true);
   });
 
-  it('does NOT fire on decisionImpact=unclear', () => {
-    const r = mapFindingsToRiskCategories({
-      ...baseInput,
-      decisionMakingDetails: 'make decisions',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
+  it('classifies high-risk with §4 category for employment decisions', () => {
+    const s = detectSignals(
+      [],
+      tx([]),
+      true,
+      'screen candidates for hiring',
+    );
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('high-risk');
+    expect(cls.annexIIICategories.some((c) => c.includes('§4'))).toBe(true);
   });
 
-  it('does NOT fire on high-impact decision outside 8 domains', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['reject refund requests for customers']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'reject refund requests based on fraud score',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(false);
+  it('classifies high-risk with §3 category for education assessment', () => {
+    const s = detectSignals(
+      [],
+      tx([]),
+      true,
+      'student exam grading and admission decisions',
+    );
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('high-risk');
+    expect(cls.annexIIICategories.some((c) => c.includes('§3'))).toBe(true);
   });
 
-  it('fires on loan denial (credit/lending domain)', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx([]),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'approve or deny loan applications based on underwriting',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'colorado-ai-act')).toBe(true);
-  });
-});
-
-describe('HIPAA scope-gate', () => {
-  it('fires on hasHealth + covered-entity signal', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['EHR patient records clinical data']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(true);
+  it('classifies high-risk with §6 category for law enforcement', () => {
+    const s = detectSignals(
+      [],
+      tx(['police criminal investigation']),
+      true,
+      'predictive policing',
+    );
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('high-risk');
+    expect(cls.annexIIICategories.some((c) => c.includes('§6'))).toBe(true);
   });
 
-  it('does NOT fire on hasHealth without covered-entity signal', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['wellness app with health data from users']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(false);
-  });
-
-  it('does NOT fire when no health signal present', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['generic customer support data']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'hipaa')).toBe(false);
+  it('classifies high-risk with §5 category for essential services credit scoring', () => {
+    const s = detectSignals(
+      [],
+      tx([]),
+      true,
+      'approve or deny consumer loan applications based on credit scoring',
+    );
+    const cls = classifyEUAIAct(s);
+    expect(cls.classification).toBe('high-risk');
+    expect(cls.annexIIICategories.some((c) => c.includes('§5'))).toBe(true);
   });
 });
 
-describe('CCPA scope-gate (base flag only, no ADMT sub-flag in v1)', () => {
-  it('fires on sensitive-data with hasPII', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['name, email, phone PII collected from users']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(true);
-  });
+// ─── EU AI Act per-control Annex III gating ─────────────────────────────────
 
-  it('fires only ONCE on ccpa-cpra (no ADMT sub-flag)', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['email, phone PII']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'credit scoring for loan approval',
-    });
-    const ccpaFlags = r.all.filter((f) => f.frameworkId === 'ccpa-cpra');
-    expect(ccpaFlags.length).toBe(1);
-  });
-
-  it('does NOT fire without PII signals', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['generic anonymous telemetry metrics only']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'ccpa-cpra')).toBe(false);
-  });
-});
-
-describe('Framework registry — primarySource', () => {
-  it('every framework has a primarySource URL', () => {
-    for (const [id, f] of Object.entries(FRAMEWORKS)) {
-      expect(f.primarySource, `framework ${id}`).toBeTruthy();
-      expect(f.primarySource, `framework ${id}`).toMatch(/^https?:\/\//);
-    }
-  });
-});
-
-describe('EU AI Act — two-level gating', () => {
-  it('base eu-ai-act fires on every active finding', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['name, email PII']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act')).toBe(true);
-  });
-
-  it('high-risk fires on biometric sensitive-data (Annex III §1)', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['facial recognition with ssn government id']),
-    });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
-  });
-
-  it('high-risk fires on employment decisions (Annex III §4)', () => {
+describe('EU AI Act single-framework entry with Annex III gating', () => {
+  it('emits exactly one EU AI Act flag per finding type (not two)', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
       transcript: tx([]),
       makesDecisionsAboutPeople: true,
       decisionMakingDetails: 'screen candidates for hiring',
     });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
+
+    // All EU AI Act flags should share the single framework ID `eu-ai-act`
+    const euFlags = r.all.filter((f) => f.frameworkId === 'eu-ai-act');
+    expect(euFlags.length).toBeGreaterThan(0);
+
+    // No flag should use the old `eu-ai-act-high-risk` ID
+    expect(r.all.some((f) => (f.frameworkId as string) === 'eu-ai-act-high-risk')).toBe(false);
+
+    // frameworksActivated contains only the single entry
+    expect(r.frameworksActivated).toContain('eu-ai-act');
+    expect((r.frameworksActivated as string[])).not.toContain('eu-ai-act-high-risk');
   });
 
-  it('high-risk fires on education assessment (Annex III §3)', () => {
+  it('Annex III-tagged controls only appear when high-risk', () => {
+    // High-risk audit: Annex III §4 employment
+    const highRisk = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'screen candidates for hiring',
+    });
+    const hrControlIds = highRisk.all
+      .filter((f) => f.frameworkId === 'eu-ai-act')
+      .flatMap((f) => f.controlIds);
+    // Should include at least one known Annex III control
+    expect(hrControlIds.some((id) => /Annex III|Art\. 9$|Art\. 10$|Art\. 14$|Art\. 27/.test(id))).toBe(true);
+
+    // Limited-risk audit: generic outreach, no Annex III signals
+    const limited = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx(['name, email PII for sales outreach']),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'rank leads for outreach',
+    });
+    const limitedControlIds = limited.all
+      .filter((f) => f.frameworkId === 'eu-ai-act')
+      .flatMap((f) => f.controlIds);
+    // Must NOT include Annex III-only controls
+    expect(limitedControlIds.includes('Art. 27')).toBe(false);
+    expect(limitedControlIds.includes('Art. 43')).toBe(false);
+    expect(limitedControlIds.includes('Art. 49')).toBe(false);
+    // But should include baseline (e.g. Art. 50)
+    expect(limitedControlIds.some((id) => /Art\. 50|Art\. 14\(4\)\(d\)|Art\. 9\(1\)/.test(id))).toBe(true);
+  });
+
+  it('each EU AI Act flag carries euAiActClassification that matches the audit-level classification', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
       transcript: tx([]),
       makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'student exam grading and admission decisions',
+      decisionMakingDetails: 'screen candidates for hiring',
     });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
-  });
-
-  it('high-risk fires on law enforcement (Annex III §6)', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['police criminal investigation']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'predictive policing',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
-  });
-
-  it('high-risk does NOT fire on generic decisions without Annex III match', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['refund request approval decisions']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'approve refunds based on policy',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(false);
-  });
-
-  it('high-risk fires on essential services credit scoring (Annex III §5)', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx([]),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'approve or deny consumer loan applications based on credit scoring',
-    });
-    expect(r.all.some((f) => f.frameworkId === 'eu-ai-act-high-risk')).toBe(true);
-  });
-
-  it('high-risk does NOT duplicate across all finding types for law enforcement', () => {
-    const r = mapFindingsToRiskCategories({
-      systems: [baseSystem()],
-      transcript: tx(['police criminal investigation']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'predictive policing recidivism assessment',
-    });
-    const hrFlags = r.all.filter((f) => f.frameworkId === 'eu-ai-act-high-risk');
-    // Should fire only on decisions-about-people and/or regulatory-flags findings,
-    // NOT on every finding type (excessive-access, write-risk, etc.)
-    for (const f of hrFlags) {
-      expect(['decisions-about-people', 'regulatory-flags']).toContain(f.triggeredBy);
+    for (const f of r.all.filter((f) => f.frameworkId === 'eu-ai-act')) {
+      expect(f.euAiActClassification).toBe(r.euAiActClassification.classification);
     }
   });
 });
 
-describe('Control-mapping citations — every row carries a note', () => {
-  it('every FrameworkControl has a non-empty note', () => {
-    for (const [findingType, mapping] of Object.entries(CONTROL_MAPPINGS)) {
-      for (const ctrl of mapping.controls) {
-        expect(ctrl.note, `${findingType} / ${ctrl.frameworkId} / ${ctrl.controlId}`).toBeTruthy();
-      }
-    }
-  });
-});
+// ─── Flag disclaimer (jurisdictional caveat) ────────────────────────────────
 
-describe('Flag disclaimers — statute jurisdictional caveats', () => {
+describe('Flag disclaimers — surviving frameworks only', () => {
   function findingWith(input: MapperInput, frameworkId: string) {
     const r = mapFindingsToRiskCategories(input);
     return r.all.find((f) => f.frameworkId === frameworkId);
   }
 
-  it('Colorado flag description names Colorado business/residents test', () => {
-    const flag = findingWith({
-      systems: [baseSystem()],
-      transcript: tx(['hire candidates']),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screen candidates for hiring',
-    }, 'colorado-ai-act');
-    expect(flag).toBeDefined();
-    expect(flag!.description).toMatch(/Colorado/i);
-    expect(flag!.description).toMatch(/2026-06-30|June 30, 2026/);
-  });
-
-  it('CCPA flag description names CCPA thresholds', () => {
-    const flag = findingWith({
-      systems: [baseSystem()],
-      transcript: tx(['name email phone PII']),
-    }, 'ccpa-cpra');
-    expect(flag).toBeDefined();
-    expect(flag!.description).toMatch(/26,625,000|CCPA threshold/i);
-    expect(flag!.description).toMatch(/California resident/i);
-  });
-
-  it('HIPAA flag description names covered-entity test + HBNR fallback', () => {
-    const flag = findingWith({
-      systems: [baseSystem()],
-      transcript: tx(['EHR patient records']),
-    }, 'hipaa');
-    expect(flag).toBeDefined();
-    expect(flag!.description).toMatch(/covered entity/i);
-    expect(flag!.description).toMatch(/FTC Health Breach Notification Rule|HBNR/i);
-  });
-
-  it('UK GDPR flag description names targeting/monitoring test', () => {
-    const flag = findingWith({
-      systems: [baseSystem()],
-      transcript: tx(['name email phone PII']),
-    }, 'uk-gdpr-dpa-2018');
-    expect(flag).toBeDefined();
-    expect(flag!.description).toMatch(/UK data subjects|UK.based behaviour/i);
-  });
-
-  it('EU AI Act base flag description names EU market/output test', () => {
+  it('EU AI Act flag description names EU market/output test', () => {
     const flag = findingWith({
       systems: [baseSystem()],
       transcript: tx(['name email PII']),
@@ -711,16 +450,13 @@ describe('Flag disclaimers — statute jurisdictional caveats', () => {
     expect(flag!.description).toMatch(/EU market|outputs are used in the EU/i);
   });
 
-  it('EU AI Act high-risk flag description references Annex III + profiling disclaimer', () => {
+  it('GDPR flag description names EU data-subject test', () => {
     const flag = findingWith({
       systems: [baseSystem()],
-      transcript: tx([]),
-      makesDecisionsAboutPeople: true,
-      decisionMakingDetails: 'screen candidates for hiring',
-    }, 'eu-ai-act-high-risk');
+      transcript: tx(['name email PII']),
+    }, 'gdpr');
     expect(flag).toBeDefined();
-    expect(flag!.description).toMatch(/Annex III/i);
-    expect(flag!.description).toMatch(/profiling/i);
+    expect(flag!.description).toMatch(/EU data subjects|EU-based behaviour/i);
   });
 });
 

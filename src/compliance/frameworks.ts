@@ -1,14 +1,13 @@
 /**
  * Framework metadata registry.
  *
- * Separation of concerns (differs from the prior AAP-31 attempt which
- * co-located framework metadata with the control-mapping table in one file):
- *
+ * Separation of concerns:
  *   - frameworks.ts       — WHAT each framework is (name, tier, jurisdiction).
  *   - control-mappings.ts — WHICH controls a given finding activates.
  *
- * Using a tiny builder helper (`defineFramework`) keeps each entry concise
- * and makes the mandatory-vs-voluntary distinction obvious at a glance.
+ * Scope (post-AAP-42 cut, 2026-04-23): 3 frameworks — EU AI Act, GDPR,
+ * ISO/IEC 42001. EU AI Act is a single entry; high-risk (Annex III) status
+ * is a classification stored per-audit rather than a separate framework.
  */
 
 import type { Framework, FrameworkId, Jurisdiction } from './types.js';
@@ -37,89 +36,24 @@ function voluntary(
 
 export const FRAMEWORKS: Record<FrameworkId, Framework> = {
   // ── Mandatory, EU-wide ───────────────────────────────────────────────────
-  'eu-ai-act': mandatory('eu-ai-act', 'EU AI Act — Applicable', ['EU'], {
+  'eu-ai-act': mandatory('eu-ai-act', 'EU AI Act', ['EU'], {
     primarySource: 'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:L_202401689',
     summary:
-      'Regulation (EU) 2024/1689 base applicability. Applies to providers, deployers, importers, distributors, product manufacturers where the AI system is placed on the EU market or its output is used in the EU.',
+      'Regulation (EU) 2024/1689. Applies to providers, deployers, importers, distributors, and product manufacturers where the AI system is placed on the EU market or its output is used in the EU. Risk-tiered obligations: prohibited practices (Art. 5), high-risk (Art. 6 + Annex III — Art. 9-15, 27, 43, 49, 72), limited-risk transparency (Art. 50), minimal-risk.',
     scopeNote:
-      'Prohibited practices (Art. 5) in force since 2025-02-02. GPAI obligations since 2025-08-02. High-risk Annex III obligations effective 2026-08-02. Art. 50 transparency effective 2026-08-02.',
-  }),
-  'eu-ai-act-high-risk': mandatory('eu-ai-act-high-risk', 'EU AI Act — High-Risk (Annex III)', ['EU'], {
-    primarySource: 'https://artificialintelligenceact.eu/annex/3/',
-    summary:
-      'Annex III high-risk classification triggers: risk management (Art. 9), data governance (Art. 10), technical documentation (Art. 11), record-keeping (Art. 12), instructions for use (Art. 13), human oversight (Art. 14), accuracy/robustness/cybersecurity (Art. 15), conformity assessment (Art. 43), EU database registration (Art. 49), post-market monitoring (Art. 72). Deployers additionally owe FRIA (Art. 27) for public bodies.',
-    scopeNote:
-      'High-risk obligations effective 2026-08-02. Art. 6(3) exemption requires one of 4 enumerated conditions AND the system must not materially influence decision outcomes. CRITICAL: Art. 6(3) final paragraph — "An AI system referred to in Annex III shall always be considered to be high-risk where the AI system performs profiling of natural persons" — profiling carve-out applies to ALL Annex III categories (§1-§8). Commission missed 2026-02-02 Art. 6 guidelines deadline.',
+      'Prohibited practices (Art. 5) in force since 2025-02-02. GPAI obligations since 2025-08-02. High-risk Annex III obligations and Art. 50 transparency effective 2026-08-02. Art. 6(3) exemption requires one of 4 enumerated conditions AND no material influence on decision outcomes; profiling of natural persons is ALWAYS high-risk across ALL Annex III categories (Art. 6(3) final paragraph). Classification for a given audit is surfaced as a scope label in the report.',
   }),
   gdpr: mandatory('gdpr', 'GDPR', ['EU'], {
     primarySource: 'https://eur-lex.europa.eu/eli/reg/2016/679/oj',
     summary: 'Regulation (EU) 2016/679. Lawful basis, DPIA, data-subject rights.',
   }),
 
-  // ── Mandatory, UK ────────────────────────────────────────────────────────
-  'uk-gdpr-dpa-2018': mandatory(
-    'uk-gdpr-dpa-2018',
-    'UK GDPR / DPA 2018',
-    ['UK'],
-    {
-      primarySource: 'https://www.legislation.gov.uk/ukpga/2018/12/contents',
-      summary:
-        'UK General Data Protection Regulation + Data Protection Act 2018. Enforced by the ICO.',
-    },
-  ),
-
-  // ── Mandatory, US-state / US-sector specific ────────────────────────────
-  // We model US-state laws as mandatoryIn: ['US'] with a scopeNote, because
-  // the Jurisdiction union does not currently enumerate individual states.
-  'colorado-ai-act': mandatory(
-    'colorado-ai-act',
-    'Colorado AI Act (SB 24-205)',
-    ['US'],
-    {
-      primarySource: 'https://leg.colorado.gov/bill_files/47770/download',
-      scopeNote:
-        'Effective 2026-06-30 (delayed from 2026-02-01 via SB 25B-004, Aug 2025). Applies to deployers doing business in Colorado. AG enforcement; no private right of action. WATCH: on 2026-03-17 a Polis-led working group released a "Proposed ADMT Framework" — working-group endorsement, NOT yet a filed bill in the General Assembly. If enacted as a repeal-and-replace it would take effect 2027-01-01. Absent enactment, SB 24-205 takes effect 2026-06-30 as scheduled.',
-      summary:
-        'Requires algorithmic discrimination testing, consumer disclosures, human oversight, annual compliance reviews.',
-    },
-  ),
-  hipaa: mandatory('hipaa', 'HIPAA', ['US'], {
-    primarySource: 'https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-160/subpart-A/section-160.103',
-    scopeNote: 'Applies only to covered entities (providers, health plans, clearinghouses) and business associates per 45 CFR 160.103. Non-covered health apps fall under FTC Health Breach Notification Rule (16 CFR Part 318) — mutually exclusive per 16 CFR § 318.1. HIPAA Security Rule NPRM (Jan 6 2025) is not yet finalized (OCR targets May 2026).',
-    summary: 'Privacy Rule + Security Rule obligations for protected health information (PHI).',
-  }),
-  'ccpa-cpra': mandatory('ccpa-cpra', 'CCPA / CPRA', ['US'], {
-    primarySource: 'https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?division=3.&part=4.&lawCode=CIV&title=1.81.5',
-    scopeNote:
-      'Applies to businesses handling California residents\' personal information. Broader CCPA regulations effective 2026-01-01. ADMT operational obligations (pre-use notice, opt-out, risk assessment) effective 2027-01-01 for pre-existing systems; new ADMT deployments after 2027-01-01 must comply before deployment. Business applicability threshold: >$26,625,000 annual gross revenue (threshold in § 1798.140(d)(1)(A); CPI-adjusted mechanism in § 1798.199.95(d); next reset 2027-01-01) OR ≥100K CA consumers/households OR ≥50% revenue from selling/sharing PI.',
-    summary:
-      'Consumer rights: access, deletion, correction, opt-out of sale/sharing, opt-out of profiling for significant decisions.',
-  }),
-
-  // ── Voluntary / best-practice frameworks ─────────────────────────────────
-  'nist-ai-rmf': voluntary(
-    'nist-ai-rmf',
-    'NIST AI RMF',
-    'https://www.nist.gov/itl/ai-risk-management-framework',
-    'US-origin voluntary risk-management framework. GOVERN / MAP / MEASURE / MANAGE functions.',
-  ),
-  'iso-23894': voluntary(
-    'iso-23894',
-    'ISO/IEC 23894',
-    'https://www.iso.org/standard/77304.html',
-    'AI risk management guidance. Clauses 6.3–6.7.',
-  ),
+  // ── Voluntary / best-practice ────────────────────────────────────────────
   'iso-42001': voluntary(
     'iso-42001',
     'ISO/IEC 42001',
     'https://www.iso.org/standard/81230.html',
     'AI management system standard. Annex A controls (A.5–A.9).',
-  ),
-  'soc-2': voluntary(
-    'soc-2',
-    'SOC 2',
-    'https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services',
-    'AICPA Trust Services Criteria (Security, Availability, PI, Confidentiality, Privacy).',
   ),
 };
 
@@ -140,7 +74,7 @@ export function listVoluntaryFrameworks(): Framework[] {
 /**
  * Return frameworks that are mandatory in the given jurisdiction. Used by the
  * jurisdictional appendix renderer to show, e.g., "Frameworks that apply to
- * UK-domiciled processing".
+ * EU-domiciled processing".
  */
 export function frameworksFor(jurisdiction: Jurisdiction): Framework[] {
   return Object.values(FRAMEWORKS).filter((f) =>

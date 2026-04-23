@@ -260,7 +260,7 @@ function inferFindingType(risk: Risk): string | undefined {
   if (/pii|personal.?data|sensitive|privacy|data.?protection/i.test(text)) return 'sensitive-data';
   if (/scope.?creep|purpose.?limit|beyond.*need|unnecessary/i.test(text)) return 'scope-creep';
   if (/classif|decision|scor|rank|profil|bias|discriminat/i.test(text)) return 'decisions-about-people';
-  if (/regulat|compliance|health|hipaa|sector/i.test(text)) return 'regulatory-flags';
+  if (/regulat|compliance|health|sector/i.test(text)) return 'regulatory-flags';
   return undefined;
 }
 
@@ -286,9 +286,7 @@ function getFrameworkBasis(findingType: string, compliance?: StructuredComplianc
 
   // Show top 3 mandatory, framework name + first control ID
   return flags.slice(0, 3).map(f => {
-    const name = f.frameworkId === 'eu-ai-act' ? 'EU AI Act' :
-                 f.frameworkId === 'eu-ai-act-high-risk' ? 'EU AI Act Annex III' :
-                 f.framework.split(' — ')[0];
+    const name = f.frameworkId === 'eu-ai-act' ? 'EU AI Act' : f.framework.split(' — ')[0];
     const ctrl = (f.controlIds ?? [])[0] ?? '';
     return ctrl ? `${name} ${ctrl}` : name;
   }).join(', ');
@@ -456,24 +454,14 @@ const CATEGORIES: Array<{ key: RiskCategory; title: string }> = [
 
 /** Human-readable descriptions for why a framework didn't fire. */
 const NOT_TRIGGERED_REASONS: Record<string, string> = {
-  'hipaa': 'No health/covered-entity data detected',
-  'colorado-ai-act': 'No high-impact consequential decisions in 8 statutory domains',
-  'ccpa-cpra': 'No personal data signals detected',
-  'eu-ai-act-high-risk': 'No Annex III category signals detected (biometrics, employment, education, essential services, law enforcement)',
   'gdpr': 'No personal data signals detected',
-  'uk-gdpr-dpa-2018': 'No personal data signals detected',
   'eu-ai-act': 'No applicable signals detected',
 };
 
 /** Short applicability condition for mandatory frameworks that DID fire. */
 const APPLICABILITY_CONDITIONS: Record<string, string> = {
   'gdpr': 'If you serve EU data subjects',
-  'uk-gdpr-dpa-2018': 'If you serve UK data subjects',
   'eu-ai-act': 'If AI placed on EU market or outputs used in EU',
-  'eu-ai-act-high-risk': 'Annex III category matched — check Art. 6(3)',
-  'hipaa': 'If you are a HIPAA covered entity',
-  'colorado-ai-act': 'If you do business in Colorado',
-  'ccpa-cpra': 'If CA business thresholds met ($26.6M / 100K consumers)',
 };
 
 /** Map finding types to human-readable gap descriptions. */
@@ -513,20 +501,18 @@ function renderApplicabilitySummary(c: StructuredCompliance): string {
 
   const mandatoryFrameworks: Array<{ id: string; name: string }> = [
     { id: 'eu-ai-act', name: 'EU AI Act' },
-    { id: 'eu-ai-act-high-risk', name: 'EU AI Act — High-Risk (Annex III)' },
     { id: 'gdpr', name: 'GDPR' },
-    { id: 'uk-gdpr-dpa-2018', name: 'UK GDPR / DPA 2018' },
-    { id: 'hipaa', name: 'HIPAA' },
-    { id: 'colorado-ai-act', name: 'Colorado AI Act (SB 24-205)' },
-    { id: 'ccpa-cpra', name: 'CCPA / CPRA' },
   ];
 
   const voluntaryFrameworks: Array<{ id: string; name: string }> = [
-    { id: 'nist-ai-rmf', name: 'NIST AI RMF' },
-    { id: 'iso-23894', name: 'ISO/IEC 23894' },
     { id: 'iso-42001', name: 'ISO/IEC 42001' },
-    { id: 'soc-2', name: 'SOC 2' },
   ];
+
+  // EU AI Act classification scope label — single line replaces the prior
+  // two-entry split (`eu-ai-act` + `eu-ai-act-high-risk`).
+  const euClassification = (c as any).euAiActClassification as
+    | { classification: string; annexIIICategories: string[] }
+    | undefined;
 
   const mandatoryRows = mandatoryFrameworks.map(fw => {
     const isActive = activated.has(fw.id);
@@ -535,12 +521,23 @@ function renderApplicabilitySummary(c: StructuredCompliance): string {
       return `| ${fw.name} | ✅ Not applicable | ${reason} |`;
     }
     const gaps = getGaps(fw.id, allFlags);
+    let displayName = fw.name;
+    if (fw.id === 'eu-ai-act' && euClassification) {
+      const cls = euClassification.classification;
+      if (cls === 'high-risk' && euClassification.annexIIICategories.length > 0) {
+        displayName = `${fw.name} — High-Risk (Annex III ${euClassification.annexIIICategories.join(', ')})`;
+      } else if (cls === 'limited') {
+        displayName = `${fw.name} — Limited-Risk (Art. 50 transparency)`;
+      } else if (cls === 'prohibited') {
+        displayName = `${fw.name} — Prohibited Practice`;
+      }
+    }
     if (gaps.length > 0) {
       const condition = APPLICABILITY_CONDITIONS[fw.id] ?? '';
-      return `| ${fw.name} | ⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''} | ${gaps.join(', ')} — ${condition} |`;
+      return `| ${displayName} | ⚠️ ${gaps.length} gap${gaps.length > 1 ? 's' : ''} | ${gaps.join(', ')} — ${condition} |`;
     }
     const condition = APPLICABILITY_CONDITIONS[fw.id] ?? 'Check applicability';
-    return `| ${fw.name} | ⚠️ Check | ${condition} |`;
+    return `| ${displayName} | ⚠️ Check | ${condition} |`;
   });
 
   const voluntaryRows = voluntaryFrameworks.map(fw => {
@@ -615,16 +612,8 @@ function buildGapDescription(findingType: string, report?: AuditReport): string 
 function frameworkShortName(id: string): string {
   const names: Record<string, string> = {
     'eu-ai-act': 'EU AI Act',
-    'eu-ai-act-high-risk': 'EU AI Act (High-Risk)',
     'gdpr': 'GDPR',
-    'uk-gdpr-dpa-2018': 'UK GDPR',
-    'hipaa': 'HIPAA',
-    'colorado-ai-act': 'Colorado AI Act',
-    'ccpa-cpra': 'CCPA',
-    'nist-ai-rmf': 'NIST',
-    'iso-23894': 'ISO 23894',
     'iso-42001': 'ISO 42001',
-    'soc-2': 'SOC 2',
   };
   return names[id] ?? id;
 }
@@ -683,7 +672,7 @@ function renderObligationsChecklist(c: StructuredCompliance, report?: AuditRepor
   const rows: Array<{ obligation: string; action: string }> = [];
 
   // GDPR-triggered obligations
-  const hasGdpr = activated.has('gdpr') || activated.has('uk-gdpr-dpa-2018');
+  const hasGdpr = activated.has('gdpr');
   if (hasGdpr) {
     rows.push({ obligation: 'GDPR Art. 6', action: 'Decide and document WHY you are allowed to process this data (e.g. legitimate business interest — must document a balancing test)' });
     rows.push({ obligation: 'GDPR Art. 13/14', action: 'Tell people you are collecting their data: what, why, how long, and their rights' });
@@ -701,11 +690,6 @@ function renderObligationsChecklist(c: StructuredCompliance, report?: AuditRepor
     }
 
     rows.push({ obligation: 'GDPR Arts. 44-49', action: 'If data leaves EU (e.g. to US-based Google/Apify), you need a legal basis for that transfer' });
-  }
-
-  // CCPA
-  if (activated.has('ccpa-cpra')) {
-    rows.push({ obligation: 'CCPA', action: 'Check if California privacy law applies to you: >$26.6M revenue, or >100K CA users, or >50% revenue from selling personal data' });
   }
 
   // Automated decisions
@@ -740,7 +724,7 @@ export function renderStructuredCompliance(c: StructuredCompliance, report?: Aud
     ``,
     `### Methodology`,
     ``,
-    `Findings are anchored to NIST AI RMF 1.0, ISO/IEC 23894, ISO/IEC 42001, EU AI Act 2024/1689, GDPR 2016/679, UK GDPR/DPA 2018, HIPAA, SOC 2 TSC 2017, Colorado AI Act SB 24-205, and CCPA/CPRA. Mapping version: \`${c.mappingVersion}\`. Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
+    `Findings are anchored to EU AI Act 2024/1689, GDPR 2016/679, and ISO/IEC 42001 (AI management system). Mapping version: \`${c.mappingVersion}\`. EU AI Act is a single framework entry; Annex III high-risk obligations are surfaced as a classification scope label on that entry (replacing the prior two-entry split). Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
     ``,
     renderApplicabilitySummary(c),
     ``,
