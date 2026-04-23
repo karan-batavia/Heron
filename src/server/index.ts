@@ -19,7 +19,7 @@ export interface ServerConfig {
  * 1. /v1/chat/completions — OpenAI-compatible (agents connect as if talking to an LLM)
  * 2. /api/sessions — Simple REST API for managing interrogation sessions
  */
-export async function startServer(config: ServerConfig): Promise<void> {
+export async function startServer(config: ServerConfig): Promise<import('node:http').Server> {
   const llmClient = await createLLMClient(config.llm);
   const sessions = new SessionManager(llmClient, {
     maxFollowUps: config.maxFollowUps,
@@ -66,6 +66,20 @@ export async function startServer(config: ServerConfig): Promise<void> {
         return;
       }
 
+      // REST: POST compare (upload previous report for diff)
+      const postCompareMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/compare$/);
+      if (postCompareMatch && req.method === 'POST') {
+        await handlePostCompare(req, res, sessions, postCompareMatch[1]);
+        return;
+      }
+
+      // HTML: compare page (rendered diff)
+      const comparePageMatch = url.pathname.match(/^\/sessions\/([^/]+)\/compare$/);
+      if (comparePageMatch && req.method === 'GET') {
+        await handleComparePage(res, sessions, comparePageMatch[1]);
+        return;
+      }
+
       // Favicon
       if (url.pathname === '/favicon.svg') {
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
@@ -99,53 +113,56 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
   });
 
-  server.listen(config.port, config.host, () => {
-    const baseUrl = `http://localhost:${config.port}`;
-    logger.raw('');
-    logger.raw(`  \x1b[1mHeron Server\x1b[0m`);
-    logger.raw('');
-    logger.raw(`  Dashboard:  ${baseUrl}`);
-    logger.raw(`  Agent URL:  ${baseUrl}/v1/chat/completions`);
-    logger.raw(`  Reports:    ${config.reportDir}`);
-    logger.raw('');
-    logger.raw(`  \x1b[1mHow to connect an agent:\x1b[0m`);
-    logger.raw('');
-    logger.raw('  Option 1 — Paste this prompt into your agent\'s chat:');
-    logger.raw('');
-    logger.raw('  ┌──────────────────────────────────────────────────────────────────────');
-    logger.raw('  │ I need you to complete a security access review for this project.');
-    logger.raw('  │ Make sequential API calls to the Heron endpoint until it says');
-    logger.raw('  │ "Interview complete".');
-    logger.raw('  │');
-    logger.raw('  │ Step 1 — Start the interview:');
-    logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
-    logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
-    logger.raw('  │   "content":"Hi, I am ready to answer questions about this project."}]}');
-    logger.raw('  │');
-    logger.raw('  │ The response will contain a question and a session ID');
-    logger.raw('  │ (in the text and in the "heron_session_id" JSON field).');
-    logger.raw('  │');
-    logger.raw('  │ Step 2 — Send each answer:');
-    logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
-    logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
-    logger.raw('  │   "content":"YOUR ANSWER HERE"}],');
-    logger.raw('  │   "heron_session_id":"SESSION_ID_FROM_STEP_1"}');
-    logger.raw('  │');
-    logger.raw('  │ Step 3 — Repeat step 2 with each new answer until the response');
-    logger.raw('  │ says "Interview complete".');
-    logger.raw('  │');
-    logger.raw('  │ Important: answer about THIS specific project — what you actually');
-    logger.raw('  │ do, what systems you connect to, what data you handle. Not general');
-    logger.raw('  │ capabilities. Never reveal actual secret values — just describe');
-    logger.raw('  │ credential types.');
-    logger.raw('  └──────────────────────────────────────────────────────────────────────');
-    logger.raw('');
-    logger.raw('  Option 2 — Set OPENAI_BASE_URL:');
-    logger.raw('');
-    logger.raw(`    OPENAI_BASE_URL=${baseUrl}/v1 python your_agent.py`);
-    logger.raw('');
-    logger.success('Ready — waiting for agents to connect...');
-    logger.raw('');
+  return new Promise<import('node:http').Server>((resolve) => {
+    server.listen(config.port, config.host, () => {
+      const baseUrl = `http://localhost:${config.port}`;
+      logger.raw('');
+      logger.raw(`  \x1b[1mHeron Server\x1b[0m`);
+      logger.raw('');
+      logger.raw(`  Dashboard:  ${baseUrl}`);
+      logger.raw(`  Agent URL:  ${baseUrl}/v1/chat/completions`);
+      logger.raw(`  Reports:    ${config.reportDir}`);
+      logger.raw('');
+      logger.raw(`  \x1b[1mHow to connect an agent:\x1b[0m`);
+      logger.raw('');
+      logger.raw('  Option 1 — Paste this prompt into your agent\'s chat:');
+      logger.raw('');
+      logger.raw('  ┌──────────────────────────────────────────────────────────────────────');
+      logger.raw('  │ I need you to complete a security access review for this project.');
+      logger.raw('  │ Make sequential API calls to the Heron endpoint until it says');
+      logger.raw('  │ "Interview complete".');
+      logger.raw('  │');
+      logger.raw('  │ Step 1 — Start the interview:');
+      logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
+      logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
+      logger.raw('  │   "content":"Hi, I am ready to answer questions about this project."}]}');
+      logger.raw('  │');
+      logger.raw('  │ The response will contain a question and a session ID');
+      logger.raw('  │ (in the text and in the "heron_session_id" JSON field).');
+      logger.raw('  │');
+      logger.raw('  │ Step 2 — Send each answer:');
+      logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
+      logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
+      logger.raw('  │   "content":"YOUR ANSWER HERE"}],');
+      logger.raw('  │   "heron_session_id":"SESSION_ID_FROM_STEP_1"}');
+      logger.raw('  │');
+      logger.raw('  │ Step 3 — Repeat step 2 with each new answer until the response');
+      logger.raw('  │ says "Interview complete".');
+      logger.raw('  │');
+      logger.raw('  │ Important: answer about THIS specific project — what you actually');
+      logger.raw('  │ do, what systems you connect to, what data you handle. Not general');
+      logger.raw('  │ capabilities. Never reveal actual secret values — just describe');
+      logger.raw('  │ credential types.');
+      logger.raw('  └──────────────────────────────────────────────────────────────────────');
+      logger.raw('');
+      logger.raw('  Option 2 — Set OPENAI_BASE_URL:');
+      logger.raw('');
+      logger.raw(`    OPENAI_BASE_URL=${baseUrl}/v1 python your_agent.py`);
+      logger.raw('');
+      logger.success('Ready — waiting for agents to connect...');
+      logger.raw('');
+      resolve(server);
+    });
   });
 }
 
@@ -703,6 +720,85 @@ Important: answer about THIS specific project — what you actually do, what sys
 </html>`;
 
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+  res.end(html);
+}
+
+// ─── Compare handlers (AAP-32) ────────────────────────────────────────────
+
+const MAX_COMPARE_BODY_BYTES = 128 * 1024;
+
+async function handlePostCompare(
+  req: IncomingMessage,
+  res: ServerResponse,
+  sessions: SessionManager,
+  sessionId: string,
+): Promise<void> {
+  // Stream-read the body with size cap.
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let oversize = false;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    total += buf.length;
+    if (total > MAX_COMPARE_BODY_BYTES) {
+      oversize = true;
+      break;
+    }
+    chunks.push(buf);
+  }
+  if (oversize) {
+    json(res, 413, { error: `Upload exceeds ${MAX_COMPARE_BODY_BYTES} byte limit` });
+    return;
+  }
+
+  const uploaded = Buffer.concat(chunks).toString('utf-8');
+  if (!uploaded.trim()) {
+    json(res, 400, { error: 'Empty upload' });
+    return;
+  }
+
+  try {
+    await sessions.compareWithUpload(sessionId, uploaded);
+    res.writeHead(303, { Location: `/sessions/${sessionId}/compare` });
+    res.end();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`Compare failed for ${sessionId}: ${msg}`);
+    json(res, 500, { error: msg });
+  }
+}
+
+async function handleComparePage(
+  res: ServerResponse,
+  sessions: SessionManager,
+  sessionId: string,
+): Promise<void> {
+  const diff = sessions.getDiffContent(sessionId);
+  if (!diff) {
+    json(res, 404, {
+      error: 'No diff exists for this session. Upload a previous report first.',
+    });
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><title>Diff — ${sessionId}</title>${FAVICON_LINK}
+<style>${SHARED_CSS}</style>
+</head>
+<body>
+  <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
+  <p style="margin: 0 0 24px 0;"><a href="/sessions/${sessionId}">&larr; Back to session ${sessionId}</a></p>
+  <h2>Report Comparison</h2>
+  <div class="report-rendered">${markdownToHtml(diff)}</div>
+  <div class="footer">Powered by <a href="https://github.com/theonaai/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+</body>
+</html>`;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  });
   res.end(html);
 }
 
