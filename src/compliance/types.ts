@@ -149,3 +149,4 @@ export interface ControlMapping {
  *   aap-42.2026-04-23 — AAP-42 scope cut: dropped 7 jurisdiction-specific / voluntary frameworks; consolidated EU AI Act split into single entry with Annex III classification
  */
 export const MAPPING_VERSION = 'aap-42.2026-04-23' as const;
+// build-cache-bust: 2026-04-23T13:34:52Z — AAP-42 scope cut
