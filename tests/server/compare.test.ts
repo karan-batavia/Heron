@@ -103,6 +103,29 @@ describe('compare endpoints', () => {
     });
     expect(resp.status).toBe(413);
   });
+
+  it('landing page shows compare link for sessions with a diff on disk', async () => {
+    const sessionId = await runSessionToCompletion(baseUrl);
+    // Pre-place a diff file.
+    writeFileSync(join(tempDir, `${sessionId}-diff.md`), '## Summary\n\n_(none)_', 'utf-8');
+
+    const resp = await fetch(`${baseUrl}/`);
+    const html = await resp.text();
+
+    expect(html).toContain('<th>Compare</th>');
+    expect(html).toContain(`<a href="/sessions/${sessionId}/compare">compare</a>`);
+  });
+
+  it('landing page JSON includes hasDiff for each session', async () => {
+    const sessionId = await runSessionToCompletion(baseUrl);
+    writeFileSync(join(tempDir, `${sessionId}-diff.md`), 'x', 'utf-8');
+
+    const resp = await fetch(`${baseUrl}/api/sessions`);
+    const data = (await resp.json()) as { sessions: Array<{ id: string; hasDiff: boolean }> };
+    const s = data.sessions.find((x) => x.id === sessionId);
+    expect(s).toBeDefined();
+    expect(s!.hasDiff).toBe(true);
+  });
 });
 
 // ──── Helpers ────

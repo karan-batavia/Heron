@@ -306,6 +306,7 @@ async function handleListSessions(res: ServerResponse, sessions: SessionManager)
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
     riskLevel: s.reportJson?.overallRiskLevel ?? null,
+    hasDiff: sessions.hasDiff(s.id),
   }));
 
   json(res, 200, { sessions: list });
@@ -662,13 +663,14 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
   <div id="sessions-table">${activeSessions.length === 0
     ? '<div class="empty"><p>No sessions yet.</p><p>Connect an agent to <code>/v1/chat/completions</code> to start an interview.</p></div>'
     : `<table>
-    <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead>
+    <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Compare</th><th>Started</th></tr></thead>
     <tbody>
     ${activeSessions.map(s => `<tr data-id="${s.id}">
       <td><a href="/sessions/${s.id}"><code>${s.id}</code></a></td>
       <td><span class="badge badge-${s.status}">${s.status}</span></td>
       <td>${s.questionsAsked}</td>
       <td>${s.reportJson?.overallRiskLevel ? `<span class="risk risk-${s.reportJson.overallRiskLevel}">${s.reportJson.overallRiskLevel.toUpperCase()}</span>` : '—'}</td>
+      <td>${sessions.hasDiff(s.id) ? `<a href="/sessions/${s.id}/compare">compare</a>` : '—'}</td>
       <td>${s.createdAt.toISOString().slice(0, 19).replace('T', ' ')}</td>
     </tr>`).join('')}
     </tbody>
@@ -736,7 +738,7 @@ Important: answer about THIS specific project — what you actually do, what sys
         var hasActive = sessions.some(function(s) { return s.status === 'interviewing' || s.status === 'analyzing'; });
         var tbody = table.querySelector('tbody');
         if (!tbody) {
-          table.innerHTML = '<table><thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead><tbody></tbody></table>';
+          table.innerHTML = '<table><thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Compare</th><th>Started</th></tr></thead><tbody></tbody></table>';
           tbody = table.querySelector('tbody');
         }
         sessions.forEach(function(s) {
@@ -744,14 +746,15 @@ Important: answer about THIS specific project — what you actually do, what sys
           if (!row) {
             row = document.createElement('tr');
             row.setAttribute('data-id', s.id);
-            row.innerHTML = '<td><a href="/sessions/' + s.id + '"><code>' + s.id + '</code></a></td><td></td><td></td><td></td><td></td>';
+            row.innerHTML = '<td><a href="/sessions/' + s.id + '"><code>' + s.id + '</code></a></td><td></td><td></td><td></td><td></td><td></td>';
             tbody.insertBefore(row, tbody.firstChild);
           }
           var cells = row.querySelectorAll('td');
           cells[1].innerHTML = '<span class="badge badge-' + s.status + '">' + s.status + '</span>';
           cells[2].textContent = s.questionsAsked;
           cells[3].innerHTML = s.riskLevel ? '<span class="risk risk-' + s.riskLevel + '">' + s.riskLevel.toUpperCase() + '</span>' : '\\u2014';
-          cells[4].textContent = s.createdAt.slice(0,19).replace('T',' ');
+          cells[4].innerHTML = s.hasDiff ? '<a href="/sessions/' + s.id + '/compare">compare</a>' : '\\u2014';
+          cells[5].textContent = s.createdAt.slice(0,19).replace('T',' ');
         });
         if (!hasActive) clearInterval(polling);
       }).catch(function() {});
