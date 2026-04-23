@@ -554,6 +554,23 @@ async function handleSessionPage(
     ? `<h2>Report</h2><p class="error-msg">Error: ${escapeHtml(session.error ?? 'Unknown error')}</p>`
     : '';
 
+  const compareSection = session.status === 'complete' && session.report
+    ? sessions.hasDiff(id)
+      ? `<h2>Comparison</h2>
+         <p>This session has been compared against a previous report.</p>
+         <div class="report-actions">
+           <a href="/sessions/${id}/compare" class="btn">View diff</a>
+           <button onclick="document.getElementById('compare-upload').click()" class="btn btn-outline">Replace — upload a different previous report</button>
+         </div>
+         <input type="file" id="compare-upload" accept=".md,.markdown,text/markdown" style="display:none" onchange="uploadCompare(this)">`
+      : `<h2>Compare to previous report</h2>
+         <p>Upload an older Heron audit report (markdown) to see what changed.</p>
+         <div class="report-actions">
+           <button onclick="document.getElementById('compare-upload').click()" class="btn">📁 Upload previous report (.md)</button>
+         </div>
+         <input type="file" id="compare-upload" accept=".md,.markdown,text/markdown" style="display:none" onchange="uploadCompare(this)">`
+    : '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head><title>Heron</title>${FAVICON_LINK}
@@ -568,6 +585,7 @@ async function handleSessionPage(
   <div class="meta" id="session-meta">${session.questionsAsked} questions &middot; started ${session.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC</div>
 
   <div id="report-section">${reportSection}</div>
+  <div id="compare-section">${compareSection}</div>
 
   <h2>Interview Transcript (<span id="qa-count">${transcript.length}</span> Q&amp;A)</h2>
   <div id="transcript-body">${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}</div>
@@ -592,6 +610,30 @@ async function handleSessionPage(
       }).catch(function() {});
     }, 3000);
   })();
+  </script>` : ''}
+  ${session.status === 'complete' ? `<script>
+  function uploadCompare(input) {
+    var file = input.files[0];
+    if (!file) return;
+    if (file.size > 128 * 1024) {
+      alert('File too large (max 128 KB)');
+      input.value = '';
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      fetch('/api/sessions/${id}/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/markdown' },
+        body: e.target.result,
+      }).then(function(r) {
+        if (r.redirected) { window.location = r.url; return; }
+        if (r.ok) { window.location = '/sessions/${id}/compare'; return; }
+        return r.json().then(function(d) { alert('Upload failed: ' + (d.error || 'unknown')); });
+      }).catch(function(err) { alert('Upload error: ' + err.message); });
+    };
+    reader.readAsText(file);
+  }
   </script>` : ''}
 </body>
 </html>`;
