@@ -68,6 +68,9 @@ describe('runDiffCommand', () => {
     const expectedPath = join(tempDir, 'diff-report-old-report-new.md');
     expect(existsSync(expectedPath)).toBe(true);
     expect(readFileSync(expectedPath, 'utf-8')).toBe(CANNED_DIFF.trim());
+    expect(llmModule.createLLMClient).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-ant-fake' }),
+    );
   });
 
   it('respects explicit -o output path', async () => {
