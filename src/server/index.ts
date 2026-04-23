@@ -742,6 +742,7 @@ async function handlePostCompare(
     total += buf.length;
     if (total > MAX_COMPARE_BODY_BYTES) {
       oversize = true;
+      req.resume(); // drain remaining chunks so the socket can be reused
       break;
     }
     chunks.push(buf);
@@ -754,6 +755,12 @@ async function handlePostCompare(
   const uploaded = Buffer.concat(chunks).toString('utf-8');
   if (!uploaded.trim()) {
     json(res, 400, { error: 'Empty upload' });
+    return;
+  }
+
+  const session = sessions.getSession(sessionId);
+  if (!session) {
+    json(res, 404, { error: 'Session not found' });
     return;
   }
 
