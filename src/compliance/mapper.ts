@@ -7,12 +7,18 @@
  * consumer-protection / sector-specific). The report template renders
  * this directly.
  *
- * The "framework gating" logic decides whether a jurisdiction-specific
- * statute (e.g. Colorado AI Act, HIPAA, CCPA) applies to the
- * currently-detected signals. Unlike generic frameworks (which always fire
- * whenever the finding is active), these narrow statutes only fire when the
- * signals match their jurisdictional scope — otherwise we'd spam the report
- * with irrelevant US-state flags.
+ * Post-AAP-42 scope (2026-04-23):
+ *   - Framework gating is simpler — only 3 frameworks (EU AI Act, GDPR,
+ *     ISO/IEC 42001). All fire whenever the finding fires; no
+ *     jurisdiction-specific statutes to narrow-scope.
+ *   - EU AI Act controls tagged `annexIII: true` are gated per-control by
+ *     the detected Annex III signals (biometrics, education, employment,
+ *     essential services, law enforcement). This replaces the prior
+ *     two-framework split (`eu-ai-act` + `eu-ai-act-high-risk`).
+ *   - The overall EU AI Act classification is computed once per audit and
+ *     attached to the `CategorizedCompliance` output so the report can show
+ *     a single "EU AI Act — High-Risk (Annex III §3 Education)" label
+ *     instead of two separate framework blocks.
  */
 
 import type {
@@ -24,6 +30,7 @@ import { CONTROL_MAPPINGS } from './control-mappings.js';
 import { FRAMEWORKS } from './frameworks.js';
 import type {
   ControlMapping,
+  EUAIActClassification,
   FindingType,
   Framework,
   FrameworkControl,
@@ -76,64 +83,12 @@ export interface ComplianceSignals {
   decisionImpact: DecisionImpact;
   businessSystems: SystemAssessment[];
 
-  // NEW in AAP-31 v1 — statute scope-gates
-  hasCoveredEntitySignal: boolean;
-  hasConsequentialDecisionSignal: boolean;
-
-  /**
-   * RESERVED for v2 — CCPA ADMT sub-flag (operational obligations effective
-   * 2027-01-01). Detects the narrower CCPA § 7001(e) "significant decisions"
-   * 5-domain list (finance/housing/education/employment/health-care access).
-   * Currently computed and exposed on ComplianceSignals but NOT consumed by
-   * any frameworkApplies case in v1. Will be gated by a ccpa-cpra-admt sub-flag
-   * when Task AAP-43 deferred items land.
-   */
-  hasSignificantDecisionSignal: boolean;
-
-  // NEW in AAP-31 v1 — EU AI Act Annex III high-risk detection
-  hasBiometricSignal: boolean;
-  isEducationAssessmentContext: boolean;
-  isLawEnforcementContext: boolean;
-  hasEssentialServicesSignal: boolean;  // EU AI Act Annex III §5
+  // ── EU AI Act Annex III category signals ───────────────────────────────
+  hasBiometricSignal: boolean;           // Annex III §1
+  isEducationAssessmentContext: boolean; // Annex III §3
+  isLawEnforcementContext: boolean;      // Annex III §6
+  hasEssentialServicesSignal: boolean;   // Annex III §5
 }
-
-// Colorado SB 24-205 §6-1-1701(3): 8 enumerated consequential-decision domains.
-const CONSEQUENTIAL_DECISION_PATTERN = new RegExp(
-  '\\b(' + [
-    'education|school|university|admission|enrollment|financial.?aid',
-    'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?|screen|promot|terminat|fir(e|ing)',
-    'credit|loan|mortgage|underwrit|credit.?scor|deni(al|ed)?',
-    'benefit|eligib|license|permit|government.?service',
-    'treatment|diagnos|prescri|clinical',
-    'rent(al)?|lease|eviction|housing',
-    'insur(ance)?|claim|premium',
-    'sentenc|parole|bail|deport|legal.?service',
-  ].join('|') + ')\\b',
-  'i',
-);
-
-// CCPA § 7001(e) "significant decisions": narrower 5-domain list.
-const SIGNIFICANT_DECISION_PATTERN = new RegExp(
-  '\\b(' + [
-    'credit|loan|mortgage|underwrit',
-    'rent|lease|housing',
-    'education|school|university|admission|enrollment',
-    'hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|applicants?',
-    'treatment|clinical|health.?care',
-  ].join('|') + ')\\b',
-  'i',
-);
-
-// HIPAA covered-entity detection per 45 CFR 160.103.
-const COVERED_ENTITY_PATTERN = new RegExp(
-  '\\b(' + [
-    'ehr|emr|phi|protected.?health',
-    'clinical|provider|hospital|clinic',
-    'covered.?entity|business.?associate|baa',
-    'hipaa|payer|insurer|claims',
-  ].join('|') + ')\\b',
-  'i',
-);
 
 // EU AI Act Annex III §1 — biometric identification/categorisation/emotion recognition.
 const BIOMETRIC_PATTERN = new RegExp(
@@ -173,8 +128,6 @@ const LAW_ENFORCEMENT_PATTERN = new RegExp(
 // EU AI Act Annex III §5 — access to essential public/private services.
 // §5(a) public assistance benefits eligibility, §5(b) credit scoring/creditworthiness,
 // §5(c) emergency service dispatch, §5(d) health/life insurance risk assessment.
-// Note: patterns ending in mid-word stems (e.g. credit.?scor in "scoring") must not
-// use a trailing \b — use \b only at the leading boundary and allow suffix continuation.
 const ESSENTIAL_SERVICES_PATTERN = new RegExp(
   '(?:' + [
     '\\bcredit(?:\\s*scor|worthiness|\\s*rating)',  // §5(b) credit scoring / creditworthiness
@@ -232,9 +185,6 @@ export function detectSignals(
 
   const combinedText = (decisionMakingDetails ?? '') + ' ' + allText;
 
-  const hasCoveredEntitySignal = COVERED_ENTITY_PATTERN.test(allText);
-  const hasConsequentialDecisionSignal = CONSEQUENTIAL_DECISION_PATTERN.test(combinedText);
-  const hasSignificantDecisionSignal = SIGNIFICANT_DECISION_PATTERN.test(combinedText);
   const hasBiometricSignal = BIOMETRIC_PATTERN.test(allText);
   const isEducationAssessmentContext = EDUCATION_ASSESSMENT_PATTERN.test(combinedText);
   const isLawEnforcementContext = LAW_ENFORCEMENT_PATTERN.test(combinedText);
@@ -276,14 +226,108 @@ export function detectSignals(
     hasOrgBlastWithWrites,
     decisionImpact,
     businessSystems,
-    hasCoveredEntitySignal,
-    hasConsequentialDecisionSignal,
-    hasSignificantDecisionSignal,
     hasBiometricSignal,
     isEducationAssessmentContext,
     isLawEnforcementContext,
     hasEssentialServicesSignal,
   };
+}
+
+// ─── EU AI Act classification ───────────────────────────────────────────────
+
+/**
+ * Return true if at least one Annex III category signal matches for the given
+ * finding type. Used both to gate individual `annexIII: true` controls and to
+ * compute the overall EU AI Act classification for the audit.
+ */
+function isAnnexIIIApplicableForFinding(
+  findingType: FindingType,
+  signals: ComplianceSignals,
+): boolean {
+  // §1 — biometrics: tied to sensitive-data
+  if (
+    findingType === 'sensitive-data' &&
+    signals.hasSensitivePII &&
+    signals.hasBiometricSignal
+  ) {
+    return true;
+  }
+
+  // §3 — education/training assessment: tied to decisions-about-people + regulatory-flags
+  if (
+    (findingType === 'decisions-about-people' ||
+      findingType === 'regulatory-flags') &&
+    signals.isEducationAssessmentContext
+  ) {
+    return true;
+  }
+
+  // §4 — employment decisions: tied to decisions-about-people
+  if (
+    findingType === 'decisions-about-people' &&
+    signals.hasEmploymentDecisions &&
+    signals.decisionImpact !== 'none'
+  ) {
+    return true;
+  }
+
+  // §5 — access to essential services: tied to high-impact decisions
+  if (
+    findingType === 'decisions-about-people' &&
+    signals.hasEssentialServicesSignal &&
+    signals.decisionImpact === 'high'
+  ) {
+    return true;
+  }
+
+  // §6 — law enforcement: tied to decisions-about-people + regulatory-flags
+  if (
+    (findingType === 'decisions-about-people' ||
+      findingType === 'regulatory-flags') &&
+    signals.isLawEnforcementContext
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export interface EUAIActClassificationResult {
+  classification: EUAIActClassification;
+  /** Human-readable category labels that triggered the classification (Annex III §1, §3, etc.). */
+  annexIIICategories: string[];
+}
+
+/**
+ * Compute the EU AI Act classification for the audit based on detected signals.
+ *
+ * This replaces the prior two-framework-entry model where high-risk was a
+ * separate framework ID. Now it is a scope label on the single `eu-ai-act`
+ * framework entry. Called once per audit and attached to the output.
+ *
+ * Prohibited / minimal tiers are out-of-scope for v1 signal detection; we
+ * surface `high-risk` if any Annex III signal matches, otherwise `limited`
+ * (which maps to Art. 50 transparency obligations only).
+ */
+export function classifyEUAIAct(
+  signals: ComplianceSignals,
+): EUAIActClassificationResult {
+  const categories: string[] = [];
+  if (signals.hasBiometricSignal && signals.hasSensitivePII)
+    categories.push('§1 biometric');
+  if (signals.isEducationAssessmentContext) categories.push('§3 education');
+  if (signals.hasEmploymentDecisions && signals.decisionImpact !== 'none')
+    categories.push('§4 employment');
+  if (signals.hasEssentialServicesSignal && signals.decisionImpact === 'high')
+    categories.push('§5 essential services');
+  if (signals.isLawEnforcementContext) categories.push('§6 law enforcement');
+
+  if (categories.length > 0) {
+    return { classification: 'high-risk', annexIIICategories: categories };
+  }
+
+  // No Annex III signals — fall back to limited-risk (Art. 50 transparency only).
+  return { classification: 'limited', annexIIICategories: [] };
 }
 
 // ─── Typed flag shape ───────────────────────────────────────────────────────
@@ -303,6 +347,12 @@ export interface TypedRegulatoryFlag extends RegulatoryFlag {
   mandatoryIn: Jurisdiction[];
   scopeNote?: string;
   triggeredBy: FindingType;
+  /**
+   * EU AI Act only: the classification label relevant to this flag
+   * (e.g. "high-risk" if this flag was activated by Annex III gating).
+   * Undefined for non-EU-AI-Act flags.
+   */
+  euAiActClassification?: EUAIActClassification;
 }
 
 export interface CategorizedBucket {
@@ -320,6 +370,12 @@ export interface CategorizedCompliance {
   frameworksActivated: FrameworkId[];
   /** Flat list for backward-compat consumers. */
   all: TypedRegulatoryFlag[];
+  /**
+   * EU AI Act classification for this audit, with the Annex III categories
+   * (if any) that triggered the high-risk tier. Always present — drives the
+   * single-entry EU AI Act display (replaces the old two-entry split).
+   */
+  euAiActClassification: EUAIActClassificationResult;
 }
 
 function emptyBucket(): CategorizedBucket {
@@ -331,78 +387,16 @@ function emptyBucket(): CategorizedBucket {
   };
 }
 
-// ─── Framework gating (jurisdiction-specific scoping) ──────────────────────
-
-/**
- * Decides whether a framework should fire for a given finding + signal set.
- *
- * Generic frameworks (EU AI Act, GDPR, UK GDPR, NIST AI RMF, ISO, SOC 2)
- * always fire when the finding itself fires. Narrow statutes (Colorado AI Act,
- * HIPAA, CCPA) only fire when the signals match their scope — otherwise the
- * report gets spammed with US-state flags for every audit regardless of context.
- */
-function frameworkApplies(
-  frameworkId: FrameworkId,
-  findingType: FindingType,
-  signals: ComplianceSignals,
-): boolean {
-  switch (frameworkId) {
-    case 'eu-ai-act-high-risk':
-      // Annex III categories §1, §3, §4, §5, §6 gated. §2, §7, §8 deferred.
-      return (
-        (findingType === 'sensitive-data' && signals.hasSensitivePII && signals.hasBiometricSignal) ||
-        ((findingType === 'decisions-about-people' || findingType === 'regulatory-flags') && signals.isEducationAssessmentContext) ||
-        (findingType === 'decisions-about-people' && signals.hasEmploymentDecisions && signals.decisionImpact !== 'none') ||
-        // Annex III §5 — Access to essential public/private services
-        (findingType === 'decisions-about-people' && signals.hasEssentialServicesSignal && signals.decisionImpact === 'high') ||
-        // Annex III §6 — Law enforcement (scoped to avoid duplication across all finding types)
-        ((findingType === 'decisions-about-people' || findingType === 'regulatory-flags') && signals.isLawEnforcementContext)
-      );
-
-    case 'colorado-ai-act':
-      // SB 24-205 §6-1-1701(3) — consequential decisions (8 enumerated domains).
-      // Fires only on high-impact decisions AND signal match for one of 8 domains.
-      return (
-        findingType === 'decisions-about-people' &&
-        signals.decisionImpact === 'high' &&
-        signals.hasConsequentialDecisionSignal
-      );
-
-    case 'hipaa':
-      // 16 CFR § 318.1 + 45 CFR 160.103 — fires only when covered-entity signal
-      // matches. Non-covered health apps fall under FTC HBNR; description disclaimer
-      // directs deployer there.
-      return signals.hasHealth && signals.hasCoveredEntitySignal;
-
-    case 'ccpa-cpra':
-      // Base CCPA flag only in v1. ADMT operational obligations effective
-      // 2027-01-01 — sub-flag deferred (see design doc "Items deferred").
-      return findingType === 'sensitive-data' && signals.hasPII;
-
-    default:
-      // All other frameworks (generic) always fire with their finding.
-      return true;
-  }
-}
-
 // ─── Jurisdictional disclaimer appender ────────────────────────────────────
 
 function disclaimerFor(frameworkId: FrameworkId, baseDescription: string): string {
   switch (frameworkId) {
-    case 'colorado-ai-act':
-      return `${baseDescription} Applies only if you do business in Colorado or make consequential decisions about Colorado residents. Effective 2026-06-30 (delayed from 2026-02-01 via SB 25B-004).`;
-    case 'ccpa-cpra':
-      return `${baseDescription} Applies if business meets CCPA thresholds (>$26,625,000 annual gross revenue per § 1798.140(d)(1)(A) CPI-adjusted via § 1798.199.95(d); OR ≥100K CA consumers/households; OR ≥50% revenue from selling/sharing PI) AND processes data of California residents. ADMT operational obligations effective 2027-01-01.`;
-    case 'hipaa':
-      return `${baseDescription} Applies only if you are a HIPAA covered entity (provider, health plan, clearinghouse) or business associate. Non-covered health apps fall under FTC Health Breach Notification Rule (16 CFR Part 318).`;
-    case 'uk-gdpr-dpa-2018':
-      return `${baseDescription} Applies if offering goods/services to UK data subjects (targeted marketing per Art. 3(2)(a)) OR monitoring UK-based behaviour (purpose element required under Art. 3(2)(b), not mere accessibility).`;
     case 'gdpr':
       return `${baseDescription} Applies if offering goods/services to EU data subjects or monitoring EU-based behaviour (Art. 3(2)).`;
     case 'eu-ai-act':
       return `${baseDescription} Applies if placing AI on the EU market, if you are an EU-established deployer, or if outputs are used in the EU.`;
-    case 'eu-ai-act-high-risk':
-      return `${baseDescription} Your deployment signals match an Annex III category, classifying this as high-risk. Full obligations effective 2026-08-02. Art. 6(3) offers a narrow exemption (4 enumerated conditions AND no material outcome influence); profiling of natural persons is always high-risk across ALL Annex III categories — Art. 6(3) does not exempt profiling.`;
+    case 'iso-42001':
+      return baseDescription;
     default:
       return baseDescription;
   }
@@ -547,6 +541,7 @@ export function mapFindingsToRiskCategories(
     input.makesDecisionsAboutPeople === true,
     input.decisionMakingDetails,
   );
+  const euAiActClassification = classifyEUAIAct(signals);
 
   const mandatory = emptyBucket();
   const voluntary = emptyBucket();
@@ -556,17 +551,25 @@ export function mapFindingsToRiskCategories(
   for (const mapping of Object.values(CONTROL_MAPPINGS) as ControlMapping[]) {
     if (!isFindingActive(mapping.findingType, signals)) continue;
 
-    // Group controls by framework — one flag per framework per finding type.
+    // Per-control gating: drop EU AI Act controls tagged annexIII=true when
+    // the Annex III signal set does not fire for this finding type.
+    const annexIIIOn = isAnnexIIIApplicableForFinding(mapping.findingType, signals);
+    const applicableControls = mapping.controls.filter((ctrl) => {
+      if (ctrl.frameworkId === 'eu-ai-act' && ctrl.annexIII === true) {
+        return annexIIIOn;
+      }
+      return true;
+    });
+
+    // Group remaining controls by framework — one flag per framework per finding.
     const byFramework = new Map<FrameworkId, FrameworkControl[]>();
-    for (const ctrl of mapping.controls) {
+    for (const ctrl of applicableControls) {
       const arr = byFramework.get(ctrl.frameworkId) ?? [];
       arr.push(ctrl);
       byFramework.set(ctrl.frameworkId, arr);
     }
 
     for (const [frameworkId, controls] of byFramework) {
-      if (!frameworkApplies(frameworkId, mapping.findingType, signals)) continue;
-
       const framework = FRAMEWORKS[frameworkId];
       const controlIds = controls.map((c) => c.controlId);
       const { severity, description: baseDescription } = describeFinding(
@@ -590,6 +593,8 @@ export function mapFindingsToRiskCategories(
         mandatoryIn: framework.mandatoryIn,
         scopeNote: framework.scopeNote,
         triggeredBy: mapping.findingType,
+        euAiActClassification:
+          framework.id === 'eu-ai-act' ? euAiActClassification.classification : undefined,
       };
 
       all.push(flag);
@@ -605,5 +610,6 @@ export function mapFindingsToRiskCategories(
     voluntary,
     frameworksActivated: [...activated],
     all,
+    euAiActClassification,
   };
 }

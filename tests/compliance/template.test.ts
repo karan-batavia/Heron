@@ -10,20 +10,20 @@ const gdprFlag = {
   controlIds: ['Art. 6', 'Art. 13'],
   category: 'privacy' as const,
   tier: 'mandatory' as const,
-  mandatoryIn: ['EU', 'UK'],
+  mandatoryIn: ['EU'],
   frameworkId: 'gdpr',
   triggeredBy: 'sensitive-data',
 };
 
-const nistFlag = {
-  framework: 'NIST AI RMF',
+const iso42001Flag = {
+  framework: 'ISO/IEC 42001',
   severity: 'warning' as const,
-  description: 'No documented data minimization procedure.',
-  controlIds: ['GOVERN 1.1', 'MAP 1.6'],
+  description: 'Sensitive data handling procedures not documented in AIMS.',
+  controlIds: ['A.7.4', 'A.7.5'],
   category: 'privacy' as const,
   tier: 'voluntary' as const,
   mandatoryIn: [] as string[],
-  frameworkId: 'nist-ai-rmf',
+  frameworkId: 'iso-42001',
   triggeredBy: 'sensitive-data',
 };
 
@@ -36,14 +36,15 @@ const fakeCompliance: StructuredCompliance = {
     'sector-specific': [],
   },
   voluntary: {
-    privacy: [nistFlag],
+    privacy: [iso42001Flag],
     ip: [],
     'consumer-protection': [],
     'sector-specific': [],
   },
-  frameworksActivated: ['gdpr', 'nist-ai-rmf'],
-  all: [gdprFlag, nistFlag],
-};
+  frameworksActivated: ['gdpr', 'iso-42001'],
+  all: [gdprFlag, iso42001Flag],
+  euAiActClassification: { classification: 'limited', annexIIICategories: [] },
+} as StructuredCompliance;
 
 const emptyCompliance: StructuredCompliance = {
   mappingVersion: MAPPING_VERSION,
@@ -61,9 +62,10 @@ const emptyCompliance: StructuredCompliance = {
   },
   frameworksActivated: [],
   all: [],
-};
+  euAiActClassification: { classification: 'limited', annexIIICategories: [] },
+} as StructuredCompliance;
 
-describe('Template — AAP-31 structured compliance', () => {
+describe('Template — structured compliance (AAP-42 scope)', () => {
   it('contains Methodology section', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toMatch(/## Regulatory Compliance[\s\S]*### Methodology/);
@@ -72,15 +74,13 @@ describe('Template — AAP-31 structured compliance', () => {
   it('contains finding-first Compliance Detail section', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toMatch(/### Compliance Detail/);
-    // Should show gap labels as H4 headings, not framework names
     expect(md).toMatch(/#### (Excessive permissions|Data handling|Write operation risks|Automated decision-making)/);
   });
 
   it('shows Affects line with grouped framework controls', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toContain('**Affects:**');
-    // Should contain at least one framework reference
-    expect(md).toMatch(/GDPR|EU AI Act|NIST|SOC 2/);
+    expect(md).toMatch(/GDPR|EU AI Act|ISO 42001/);
   });
 
   it('does NOT contain Jurisdictional Appendix or EU/US/UK H3s', () => {
@@ -98,9 +98,7 @@ describe('Template — AAP-31 structured compliance', () => {
 
   it('references framework controls in Affects line (indicative note in Methodology only)', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    // Controls show in "Affects:" line, grouped by framework
     expect(md).toMatch(/GDPR \(Art\. 6/);
-    // indicative mapping disclaimer lives in Methodology, not per-line
     expect(md).toContain('Control mappings are indicative');
   });
 
@@ -117,13 +115,41 @@ describe('Template — AAP-31 structured compliance', () => {
     expect(md).toMatch(/No compliance gaps identified/);
   });
 
-  it('framework name appears in Affects line', () => {
+  it('GDPR name appears in Affects line', () => {
     const md = renderStructuredCompliance(fakeCompliance);
     expect(md).toContain('GDPR');
   });
 
-  it('NIST appears in Affects line or summary table', () => {
+  it('ISO 42001 appears in Affects line or summary table', () => {
     const md = renderStructuredCompliance(fakeCompliance);
-    expect(md).toContain('NIST');
+    expect(md).toContain('ISO 42001');
+  });
+});
+
+describe('Template — EU AI Act single-entry with classification scope', () => {
+  const highRiskCompliance: StructuredCompliance = {
+    ...fakeCompliance,
+    frameworksActivated: ['eu-ai-act', 'gdpr', 'iso-42001'],
+    euAiActClassification: {
+      classification: 'high-risk',
+      annexIIICategories: ['§4 employment'],
+    },
+  } as StructuredCompliance;
+
+  it('renders EU AI Act as a single row with High-Risk classification label', () => {
+    const md = renderStructuredCompliance(highRiskCompliance);
+    expect(md).toMatch(/EU AI Act — High-Risk \(Annex III §4 employment\)/);
+    // Must NOT emit two separate rows for base + high-risk
+    expect(md).not.toMatch(/EU AI Act — High-Risk \(Annex III\).*\n.*EU AI Act/);
+  });
+
+  it('renders limited-risk with Art. 50 transparency label', () => {
+    const limitedCompliance: StructuredCompliance = {
+      ...fakeCompliance,
+      frameworksActivated: ['eu-ai-act', 'gdpr'],
+      euAiActClassification: { classification: 'limited', annexIIICategories: [] },
+    } as StructuredCompliance;
+    const md = renderStructuredCompliance(limitedCompliance);
+    expect(md).toMatch(/EU AI Act — Limited-Risk \(Art\. 50 transparency\)/);
   });
 });
