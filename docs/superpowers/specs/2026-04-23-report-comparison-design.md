@@ -89,14 +89,13 @@ _(none)_
 
 Flags:
 - `-o <path>` — write to file instead of stdout
-- `-f markdown|json` — output format (markdown default, JSON for tooling)
 - `--llm-provider`, `--llm-model`, `--llm-key` — same as `scan`
 
 Exit codes: `0` always (diff is informational, not a gate). CI gating is a later-stage feature.
 
 Error cases:
 - Missing file → `Error: file not found: <path>` → exit 1
-- Invalid markdown (doesn't look like a Heron report) → LLM will still try; if the model returns a clearly bogus response, Zod validation catches it → exit 1 with a helpful message
+- Non-Heron markdown / garbage input → LLM still attempts; if the response fails the sanity check twice (original + one retry), exit 1 with a clear message
 - No LLM key → same error as `scan` → exit 1
 
 ### Web UI
@@ -112,7 +111,7 @@ On `/sessions/:id` (the session page that already renders the current report), b
 Flow:
 1. User uploads a `.md` file.
 2. Browser POSTs to `/api/sessions/:id/compare` with the markdown body.
-3. Server calls the diff logic (same code path as CLI), stores the resulting `ReportDiff` in memory keyed by session id.
+3. Server calls the diff logic (same code path as CLI), stores the resulting diff markdown in memory keyed by session id.
 4. Server responds with a redirect to `/sessions/:id/compare`.
 5. That page renders the diff as HTML using the existing `markdownToHtml` helper.
 
@@ -126,13 +125,13 @@ Flow:
 
 ```
 old.md ─┐
-        ├──► diffReports(old, new, llmClient) ──► ReportDiff ──► renderDiffMarkdown ──► output
+        ├──► diffReports(oldMd, newMd, llmClient) ──► diff markdown ──► output
 new.md ─┘                 │
                           ▼
                    LLM (one chat call)
-                   system prompt: "you are a diff engine"
-                   user prompt: old + new markdown
-                   response: structured JSON matching reportDiffSchema
+                   system prompt: "you are a diff engine, return markdown"
+                   user prompt: old + new markdown + target output format
+                   response: markdown diff
 ```
 
 ### Modules
@@ -140,39 +139,37 @@ new.md ─┘                 │
 ```
 src/
   diff/
-    types.ts       # Zod schema for ReportDiff (LLM output shape)
-    differ.ts      # diffReports(oldMd, newMd, llmClient) → ReportDiff
-    templates.ts   # renderDiffMarkdown(diff) → string
+    differ.ts        # diffReports(oldMd, newMd, llmClient) → string (markdown)
   commands/
-    diff.ts        # CLI handler (reads files, wires up LLM client, prints output)
+    diff.ts          # CLI handler (reads files, wires up LLM client, prints output)
   llm/
-    prompts.ts     # (existing file) add DIFF_SYSTEM_PROMPT and buildDiffPrompt
+    prompts.ts       # (existing file) add DIFF_SYSTEM_PROMPT and buildDiffPrompt
 
 tests/
   diff/
-    differ.test.ts      # mock LLM, verify parse + Zod validation + retry behavior
-    templates.test.ts   # snapshot test against fixture ReportDiff objects
-    cli.test.ts         # integration test for `heron diff` subcommand (mocked LLM)
+    differ.test.ts   # mock LLM, verify sanity check + retry behavior
+    cli.test.ts      # integration test for `heron diff` subcommand (mocked LLM)
     fixtures/
-      report-old.md     # handcrafted small Heron report
-      report-new.md     # same agent, some findings resolved, some added
+      report-old.md  # handcrafted small Heron report
+      report-new.md  # same agent, some findings resolved, some added
 ```
 
 Changes to existing files:
 - `bin/heron.ts` — register `diff` subcommand.
 - `src/server/index.ts` — add `POST /api/sessions/:id/compare` and `GET /sessions/:id/compare` page handlers; add upload button to the existing session page HTML.
-- `src/server/sessions.ts` — add a Map<sessionId, ReportDiff> for storing uploads in memory.
+- `src/server/sessions.ts` — add a `Map<sessionId, string>` for storing diff markdown in memory.
 - `src/llm/prompts.ts` — add diff prompt constants.
 
-No changes to persistence. No changes to `AuditReport` schema. No changes to `scan` or `serve`.
+No changes to persistence. No changes to `AuditReport` schema. No changes to `scan` or `serve`. No Zod schema for diff output, no render layer — the LLM produces the final markdown directly.
 
 ### LLM prompt strategy
 
-**System prompt** (pinned, short): "You compare two AI-agent audit reports and return a structured JSON diff. Preserve exact finding titles from the inputs. Only report changes you can justify from the text — don't invent findings."
+**System prompt** (pinned, short): "You compare two AI-agent audit reports and return a markdown diff. Preserve exact finding titles from the inputs. Only report changes you can justify from the text — don't invent findings. Produce well-structured markdown with clear section headings."
 
 **User prompt:**
 ```
-Compare these two audit reports for the same AI agent and return the JSON diff.
+Compare these two audit reports for the same AI agent and return a markdown diff
+describing what changed.
 
 === OLD REPORT ===
 <full markdown of old report>
@@ -180,105 +177,57 @@ Compare these two audit reports for the same AI agent and return the JSON diff.
 === NEW REPORT ===
 <full markdown of new report>
 
-Return JSON matching this schema:
-{
-  "old": {"date": string, "target": string, "overallRiskLevel": "low"|"medium"|"high"|"critical"},
-  "new": {"date": string, "target": string, "overallRiskLevel": "low"|"medium"|"high"|"critical"},
-  "overallRiskDirection": "improved"|"worsened"|"unchanged",
-  "resolved": [{"title": string, "severity": ..., "description": string}],
-  "added":    [{"title": string, "severity": ..., "description": string}],
-  "severityChanged": [{"title": string, "oldSeverity": ..., "newSeverity": ..., "direction": "up"|"down"}],
-  "systemsAdded": [string],
-  "systemsRemoved": [string],
-  "scopesChanged": [{"systemId": string, "added": [string], "removed": [string]}]
-}
+Your output must be markdown with exactly these top-level sections (use `##` headings):
+- Summary (a one-row table: Resolved | Added | Severity changes | Systems +/−, plus a line
+  stating the overall risk direction: improved / worsened / unchanged)
+- Resolved (bullet list of findings from OLD that are no longer in NEW; include severity)
+- Added (bullet list of findings in NEW that weren't in OLD; include severity)
+- Severity changes (bullet list of findings that appear in both but with different severity)
+- Systems (subsections: Added / Removed / Scopes changed)
 
 Rules:
-- A finding is "resolved" if it's in OLD and the NEW report clearly doesn't contain an equivalent issue.
+- A finding is "resolved" if it's in OLD and the NEW report clearly doesn't contain an
+  equivalent issue.
 - A finding is "added" if it's in NEW and wasn't in OLD.
-- "severityChanged" means the same semantic finding appears in both with a different severity level. Do NOT list it in both resolved+added.
-- Use the exact finding titles from the source reports in your output (don't paraphrase).
+- "Severity changes" means the same semantic finding appears in both with a different
+  severity level. Do NOT list it in both Resolved and Added.
+- Use the exact finding titles from the source reports (don't paraphrase).
+- If a section has nothing to report, still include the heading with "_(none)_".
+- Start the output with a short header block naming both reports (dates and overall risk).
 ```
 
-We follow the existing analyzer pattern in `src/analysis/analyzer.ts`:
-- `temperature=0` via the LLM client default.
-- Strip markdown fences in the response before parsing.
-- Retry once on parse failure.
-- No fallback — if both attempts fail, surface the error with a helpful message.
+**Sanity check on response** (not schema validation — just enough to catch garbage):
+- Non-empty after trimming.
+- Contains at least one of the expected headings (`## Summary`, `## Resolved`, `## Added`).
 
-### Data model
+If sanity check fails, retry once with the same prompt (existing `analyzer.ts` pattern). If the retry also fails, surface a clear error to the user — no silent fallback.
 
-```ts
-// src/diff/types.ts
-import { z } from 'zod';
-import { severitySchema } from '../report/types.js';
+### Output format
 
-const riskSummarySchema = z.object({
-  title: z.string(),
-  severity: severitySchema,
-  description: z.string(),
-});
+There is no intermediate data structure. `diffReports()` returns the markdown string returned by the LLM (after sanity check and fence stripping). The CLI prints it. The web handler stores it and renders it through the existing `markdownToHtml` helper.
 
-const scopesChangedSchema = z.object({
-  systemId: z.string(),
-  added: z.array(z.string()).default([]),
-  removed: z.array(z.string()).default([]),
-});
-
-export const reportDiffSchema = z.object({
-  old: z.object({
-    date: z.string(),
-    target: z.string(),
-    overallRiskLevel: severitySchema,
-  }),
-  new: z.object({
-    date: z.string(),
-    target: z.string(),
-    overallRiskLevel: severitySchema,
-  }),
-  overallRiskDirection: z.enum(['improved', 'worsened', 'unchanged']),
-  resolved: z.array(riskSummarySchema).default([]),
-  added: z.array(riskSummarySchema).default([]),
-  severityChanged: z.array(z.object({
-    title: z.string(),
-    oldSeverity: severitySchema,
-    newSeverity: severitySchema,
-    direction: z.enum(['up', 'down']),
-  })).default([]),
-  systemsAdded: z.array(z.string()).default([]),
-  systemsRemoved: z.array(z.string()).default([]),
-  scopesChanged: z.array(scopesChangedSchema).default([]),
-});
-
-export type ReportDiff = z.infer<typeof reportDiffSchema>;
-```
-
-Any additional counts (e.g. the summary row) are derived in `templates.ts` at render time, not stored.
+This means no `types.ts`, no `templates.ts`, no snapshot-against-ReportDiff tests — the LLM controls formatting end-to-end, constrained by the section structure required in the prompt.
 
 ---
 
 ## Testing strategy
 
 1. **`differ.test.ts`** — uses a mock `LLMClient`:
-   - Happy path: mock returns valid JSON → assert the parsed `ReportDiff` matches.
-   - Parse failure + retry: first mock call returns garbage, second returns valid → assert retry happened and final result is correct.
+   - Happy path: mock returns well-formed diff markdown (with expected headings) → assert `diffReports` returns it unchanged (after fence stripping).
+   - Sanity-check retry: first mock call returns an empty string or text without any expected headings, second returns valid markdown → assert retry happened and final result is correct.
    - Double failure: both mock calls return garbage → assert the function throws a clear error (no silent fallback).
-   - Zod schema rejection: mock returns JSON with wrong shape → throws.
+   - Fence stripping: mock wraps output in ```` ```markdown ... ``` ```` → assert fences are stripped.
 
-2. **`templates.test.ts`** — snapshot tests:
-   - Handcrafted `ReportDiff` objects covering all output branches (resolved/added/severity-changed, systems added/removed/scope-changed, overall direction up/down/same).
-   - Snapshot the rendered markdown.
-
-3. **CLI integration test** — `tests/diff/cli.test.ts`:
+2. **CLI integration test** — `tests/diff/cli.test.ts`:
    - Uses two fixture markdown reports from `tests/diff/fixtures/`.
    - Runs the CLI via a test harness (existing pattern in `tests/integration/`).
-   - Mocks the LLM client to return a known `ReportDiff`.
-   - Asserts stdout matches expected markdown.
+   - Mocks the LLM client to return a canned diff markdown.
+   - Asserts stdout equals the canned markdown.
 
-4. **Server endpoint test** — `tests/server/compare.test.ts`:
-   - POST a markdown body to `/api/sessions/:id/compare` with a fake session.
-   - Assert the endpoint returns 303 redirect.
-   - GET the compare page and assert the diff is rendered.
+3. **Server endpoint test** — `tests/server/compare.test.ts`:
+   - POST a markdown body to `/api/sessions/:id/compare` with a fake session and mocked LLM.
+   - Assert the endpoint returns 303 redirect to `/sessions/:id/compare`.
+   - GET the compare page and assert the diff markdown is rendered into HTML.
 
 Existing patterns followed: Vitest, LLM client mocking style from `tests/analysis/`, server test style from `tests/server/`.
 
@@ -297,9 +246,9 @@ Existing patterns followed: Vitest, LLM client mocking style from `tests/analysi
 | Risk | Mitigation |
 |------|------------|
 | LLM hallucinates a resolved/added finding that isn't there | System prompt explicitly forbids invention; prompt instructs model to quote exact titles. We document in the rendered output that this is an LLM-assisted comparison, not a ground truth. |
-| LLM returns malformed JSON | One retry + Zod validation + clear error on double failure. Same pattern as `analyzer.ts`. |
-| User uploads a non-Heron markdown file | LLM will produce a low-quality or schema-invalid response → Zod catches it → clear error. |
-| Server memory fills up with uploads | Uploads are keyed by session id, only one per session (new upload overwrites). Capped at 128 KB each. |
+| LLM returns malformed output (empty, off-topic, missing sections) | Sanity check (non-empty + contains at least one expected heading) + one retry + clear error on double failure. Same pattern as `analyzer.ts`. |
+| User uploads a non-Heron markdown file | LLM will produce low-quality output that likely fails the sanity check → retry → clear error. |
+| Server memory fills up with uploads | Uploads (and the resulting diff markdown) are keyed by session id, only one per session (new upload overwrites). Capped at 128 KB per upload. |
 
 ---
 
