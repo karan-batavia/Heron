@@ -710,6 +710,8 @@ Important: answer about THIS specific project — what you actually do, what sys
     <tr><td><code>GET /api/sessions</code></td><td>List all sessions (JSON)</td></tr>
     <tr><td><code>GET /api/sessions/:id</code></td><td>Session details + transcript</td></tr>
     <tr><td><code>GET /api/sessions/:id/report</code></td><td>Download audit report (markdown)</td></tr>
+    <tr><td><code>POST /api/sessions/:id/compare</code></td><td>Upload previous report, generate diff</td></tr>
+    <tr><td><code>GET /sessions/:id/compare</code></td><td>View diff (HTML)</td></tr>
     </tbody>
   </table>
 
@@ -806,6 +808,11 @@ async function handlePostCompare(
   const session = sessions.getSession(sessionId);
   if (!session) {
     json(res, 404, { error: 'Session not found' });
+    return;
+  }
+
+  if (session.status !== 'complete' || !session.report) {
+    json(res, 409, { error: `Session ${sessionId} has no report yet (status: ${session.status})` });
     return;
   }
 

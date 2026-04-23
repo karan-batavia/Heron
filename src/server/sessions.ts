@@ -8,7 +8,6 @@ import { renderMarkdownReport } from '../report/templates.js';
 import type { LLMClient } from '../llm/client.js';
 import type { AuditReport, DataQuality, QAPair } from '../report/types.js';
 import type { InterviewQuestion } from '../interview/questions.js';
-import { COMPLIANCE_FIELD_CHECKLIST } from '../llm/prompts.js';
 import * as logger from '../util/logger.js';
 import { diffReports } from '../diff/differ.js';
 
