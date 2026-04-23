@@ -48,57 +48,35 @@ Today, users have two markdown reports side-by-side and have to diff them by eye
 heron diff reports/sess_abc.md reports/sess_xyz.md
 ```
 
-Prints to stdout:
+Behavior mirrors `heron scan`: do the work, save the result to disk, print a short summary of where it went.
+
+**Stdout output (short, like `scan`):**
 
 ```
-# Report Comparison
+  Heron Report Diff
 
-**Old:** sess_abc (2026-04-10) — risk: MEDIUM
-**New:** sess_xyz (2026-04-22) — risk: LOW ✓ improved
-
-## Summary
-
-| Resolved | Added | Severity changes | Systems +/− |
-|----------|-------|------------------|-------------|
-|    2     |   1   |        1         |    +1 / −0  |
-
-## Resolved (2)
-
-- **[HIGH] Broad write access to Google Sheets queue** — no longer present
-- **[CRITICAL] Local HTTP worker has no built-in authentication** — no longer present
-
-## Added (1)
-
-- **[MEDIUM] Telegram notifications may expose internal links** — new in this audit
-
-## Severity changes (1)
-
-- **Broad Google Drive write access**: HIGH → MEDIUM
-
-## Systems
-
-**Added:**
-- Notion → REST API → API key
-
-**Removed:**
-_(none)_
-
-**Scopes changed:**
-- Google Sheets: removed `spreadsheets.readonly` (least-privilege improvement)
+  Old:   reports/sess_abc.md  (2026-04-10, MEDIUM)
+  New:   reports/sess_xyz.md  (2026-04-22, LOW)
+  Diff:  reports/diff-sess_abc-sess_xyz.md
 ```
+
+The "Old" and "New" metadata (date + overall risk level) come from the first line of each Heron report via a simple regex (`**Generated**: <date>` and `**Risk Level**: <level>`). No content parsing — just header reads.
+
+**File saved to disk** (default): `reports/diff-<oldBasename>-<newBasename>.md`, containing the full markdown diff produced by the LLM. Basenames come from input filenames with `.md` stripped.
 
 Flags:
-- `-o <path>` — write to file instead of stdout
-- `--llm-provider`, `--llm-model`, `--llm-key` — same as `scan`
+- `-o <path>` — override the default save path.
+- `--report-dir <dir>` — override the default report directory (same flag as `scan`, defaults to `./reports`).
+- `--llm-provider`, `--llm-model`, `--llm-key` — same as `scan`.
 
-Exit codes: `0` always (diff is informational, not a gate). CI gating is a later-stage feature.
+Exit codes: `0` on success. CI gating is a later-stage feature.
 
 Error cases:
 - Missing file → `Error: file not found: <path>` → exit 1
 - Non-Heron markdown / garbage input → LLM still attempts; if the response fails the sanity check twice (original + one retry), exit 1 with a clear message
 - No LLM key → same error as `scan` → exit 1
 
-### Web UI
+### Web UI — session page
 
 On `/sessions/:id` (the session page that already renders the current report), below the existing Report section, add a new block:
 
@@ -108,14 +86,43 @@ On `/sessions/:id` (the session page that already renders the current report), b
 [ 📁 Upload previous report (.md) ]   [or drag-and-drop here]
 ```
 
-Flow:
-1. User uploads a `.md` file.
-2. Browser POSTs to `/api/sessions/:id/compare` with the markdown body.
-3. Server calls the diff logic (same code path as CLI), stores the resulting diff markdown in memory keyed by session id.
-4. Server responds with a redirect to `/sessions/:id/compare`.
-5. That page renders the diff as HTML using the existing `markdownToHtml` helper.
+If a diff for this session already exists on disk (`reports/<sessionId>-diff.md`), the block instead shows:
 
-**Trust model:** the upload is stored in memory only, scoped to the server's lifetime, keyed to the session id. No persistent storage, no auth — matches the current server's trust model (localhost dev tool). Uploads are capped at 128 KB (reports are typically 20–40 KB; cap gives headroom without letting someone DoS the server).
+```
+## Comparison
+
+This session has been compared against a previous report.
+
+[ View diff ]   [ Replace — upload a different previous report ]
+```
+
+**Upload flow:**
+1. User uploads a `.md` file through the button or drag-and-drop.
+2. Browser POSTs to `/api/sessions/:id/compare` with the markdown body.
+3. Server calls the diff logic (same code path as CLI), writes the result to `reports/<sessionId>-diff.md` (overwrites any previous diff for this session — user confirmed this is acceptable).
+4. Server responds with a 303 redirect to `/sessions/:id/compare`.
+5. That page reads `reports/<sessionId>-diff.md` and renders it as HTML using the existing `markdownToHtml` helper. Includes a "← Back to session" link.
+
+**Upload size cap:** 128 KB per upload (reports are typically 20–40 KB; cap gives headroom without letting someone DoS the server).
+
+### Web UI — landing page
+
+The sessions table on the landing page gains a new column "Compare" (added between "Risk" and "Started"). For each row:
+
+- If `reports/<sessionId>-diff.md` exists on disk → the cell shows a `compare` link to `/sessions/:id/compare`.
+- Otherwise → the cell is empty (just `—`).
+
+```
+  SESSION           STATUS        QUESTIONS  RISK      COMPARE    STARTED
+  sess_8f0...521d   complete            13   MEDIUM    compare    2026-04-20
+  sess_eb1...40cb   interviewing         2   —         —          2026-04-20
+```
+
+The existence check is a cheap `fs.existsSync(reports/<id>-diff.md)` per row at render time. Self-healing: delete the file, the link disappears on next load. Survives server restarts (unlike in-memory storage).
+
+As soon as a diff is saved (at the moment the user uploads a previous report on the session page), the link appears — next reload of the landing page shows it.
+
+**Trust model:** reports and diffs live in the same `reportDir` (default `./reports`). Localhost dev tool — no auth. Same trust model the server uses today for reports.
 
 ---
 
@@ -156,11 +163,19 @@ tests/
 
 Changes to existing files:
 - `bin/heron.ts` — register `diff` subcommand.
-- `src/server/index.ts` — add `POST /api/sessions/:id/compare` and `GET /sessions/:id/compare` page handlers; add upload button to the existing session page HTML.
-- `src/server/sessions.ts` — add a `Map<sessionId, string>` for storing diff markdown in memory.
+- `src/server/index.ts` — add `POST /api/sessions/:id/compare` and `GET /sessions/:id/compare` handlers; add upload block to the session page HTML; add "Compare" column to the landing-page sessions table.
 - `src/llm/prompts.ts` — add diff prompt constants.
 
-No changes to persistence. No changes to `AuditReport` schema. No changes to `scan` or `serve`. No Zod schema for diff output, no render layer — the LLM produces the final markdown directly.
+No changes to `AuditReport` schema. No changes to `scan` or `serve`. No Zod schema for diff output, no render layer — the LLM produces the final markdown directly. Diff output is saved to disk alongside existing `.md` reports.
+
+### Persistence
+
+Diffs are saved to disk in the same `reportDir` as regular reports:
+
+- **CLI** (`heron diff old.md new.md`) → `reports/diff-<oldBasename>-<newBasename>.md`. Not tied to a server session.
+- **Web** (upload on session page) → `reports/<sessionId>-diff.md`. Tied to a session; new upload for the same session overwrites the previous diff (user confirmed this is acceptable, same overwrite semantics as `scan` reports today).
+
+Both paths call the same `diffReports(oldMd, newMd, llmClient)` function and write the returned markdown to disk. No in-memory diff storage — reads go through the filesystem (landing-page column, session page "has diff?" check, `/sessions/:id/compare` render).
 
 ### LLM prompt strategy
 
@@ -226,8 +241,9 @@ This means no `types.ts`, no `templates.ts`, no snapshot-against-ReportDiff test
 
 3. **Server endpoint test** — `tests/server/compare.test.ts`:
    - POST a markdown body to `/api/sessions/:id/compare` with a fake session and mocked LLM.
-   - Assert the endpoint returns 303 redirect to `/sessions/:id/compare`.
-   - GET the compare page and assert the diff markdown is rendered into HTML.
+   - Assert the endpoint writes `reports/<id>-diff.md` and returns a 303 redirect to `/sessions/:id/compare`.
+   - GET the compare page and assert the file contents are rendered into HTML.
+   - GET the landing page and assert the sessions table has a `compare` link for this session.
 
 Existing patterns followed: Vitest, LLM client mocking style from `tests/analysis/`, server test style from `tests/server/`.
 
@@ -248,7 +264,7 @@ Existing patterns followed: Vitest, LLM client mocking style from `tests/analysi
 | LLM hallucinates a resolved/added finding that isn't there | System prompt explicitly forbids invention; prompt instructs model to quote exact titles. We document in the rendered output that this is an LLM-assisted comparison, not a ground truth. |
 | LLM returns malformed output (empty, off-topic, missing sections) | Sanity check (non-empty + contains at least one expected heading) + one retry + clear error on double failure. Same pattern as `analyzer.ts`. |
 | User uploads a non-Heron markdown file | LLM will produce low-quality output that likely fails the sanity check → retry → clear error. |
-| Server memory fills up with uploads | Uploads (and the resulting diff markdown) are keyed by session id, only one per session (new upload overwrites). Capped at 128 KB per upload. |
+| `reportDir` disk space | Diffs are regular markdown files (~5–20 KB each). Overwrite-per-session means max 1 diff per session. No new unbounded growth beyond what `scan` reports already cause. Uploads capped at 128 KB before they hit the LLM. |
 
 ---
 
