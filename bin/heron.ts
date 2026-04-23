@@ -89,6 +89,36 @@ program
     }
   });
 
+// ─── diff: compare two audit reports ────────────────────────────────────
+
+program
+  .command('diff')
+  .description('Compare two Heron audit reports and produce a markdown delta')
+  .argument('<old>', 'Path to the older report markdown')
+  .argument('<new>', 'Path to the newer report markdown')
+  .option('--llm-provider <provider>', 'LLM provider: anthropic, openai, or gemini (auto-detected from key)')
+  .option('--llm-model <model>', 'LLM model (auto-selected per provider)')
+  .option('--llm-key <key>', 'LLM API key (or set HERON_LLM_API_KEY)')
+  .option('-o, --output <path>', 'Save diff to this path (overrides default)')
+  .option('--report-dir <dir>', 'Directory to save diff when -o not used', './reports')
+  .action(async (oldPath: string, newPath: string, opts) => {
+    try {
+      const { runDiffCommand } = await import('../src/commands/diff.js');
+      await runDiffCommand({
+        oldPath,
+        newPath,
+        outputPath: opts.output,
+        reportDir: opts.reportDir,
+        llmProvider: opts.llmProvider,
+        llmModel: opts.llmModel,
+        llmKey: opts.llmKey,
+      });
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
 // ─── install-skill: install Claude Code skill ───────────────────────────────
 
 program
@@ -217,7 +247,7 @@ async function interactiveStart(): Promise<void> {
 }
 
 const args = process.argv.slice(2);
-const hasSubcommand = args.length > 0 && ['scan', 'serve', 'install-skill', 'help', '--help', '-h', '--version', '-V'].includes(args[0]);
+const hasSubcommand = args.length > 0 && ['scan', 'serve', 'install-skill', 'diff', 'help', '--help', '-h', '--version', '-V'].includes(args[0]);
 
 if (!hasSubcommand && args.length > 0) {
   // Legacy: flags without subcommand → scan

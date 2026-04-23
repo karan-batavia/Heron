@@ -19,7 +19,7 @@ export interface ServerConfig {
  * 1. /v1/chat/completions — OpenAI-compatible (agents connect as if talking to an LLM)
  * 2. /api/sessions — Simple REST API for managing interrogation sessions
  */
-export async function startServer(config: ServerConfig): Promise<void> {
+export async function startServer(config: ServerConfig): Promise<import('node:http').Server> {
   const llmClient = await createLLMClient(config.llm);
   const sessions = new SessionManager(llmClient, {
     maxFollowUps: config.maxFollowUps,
@@ -66,6 +66,20 @@ export async function startServer(config: ServerConfig): Promise<void> {
         return;
       }
 
+      // REST: POST compare (upload previous report for diff)
+      const postCompareMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/compare$/);
+      if (postCompareMatch && req.method === 'POST') {
+        await handlePostCompare(req, res, sessions, postCompareMatch[1]);
+        return;
+      }
+
+      // HTML: compare page (rendered diff)
+      const comparePageMatch = url.pathname.match(/^\/sessions\/([^/]+)\/compare$/);
+      if (comparePageMatch && req.method === 'GET') {
+        await handleComparePage(res, sessions, comparePageMatch[1]);
+        return;
+      }
+
       // Favicon
       if (url.pathname === '/favicon.svg') {
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
@@ -99,53 +113,56 @@ export async function startServer(config: ServerConfig): Promise<void> {
     }
   });
 
-  server.listen(config.port, config.host, () => {
-    const baseUrl = `http://localhost:${config.port}`;
-    logger.raw('');
-    logger.raw(`  \x1b[1mHeron Server\x1b[0m`);
-    logger.raw('');
-    logger.raw(`  Dashboard:  ${baseUrl}`);
-    logger.raw(`  Agent URL:  ${baseUrl}/v1/chat/completions`);
-    logger.raw(`  Reports:    ${config.reportDir}`);
-    logger.raw('');
-    logger.raw(`  \x1b[1mHow to connect an agent:\x1b[0m`);
-    logger.raw('');
-    logger.raw('  Option 1 — Paste this prompt into your agent\'s chat:');
-    logger.raw('');
-    logger.raw('  ┌──────────────────────────────────────────────────────────────────────');
-    logger.raw('  │ I need you to complete a security access review for this project.');
-    logger.raw('  │ Make sequential API calls to the Heron endpoint until it says');
-    logger.raw('  │ "Interview complete".');
-    logger.raw('  │');
-    logger.raw('  │ Step 1 — Start the interview:');
-    logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
-    logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
-    logger.raw('  │   "content":"Hi, I am ready to answer questions about this project."}]}');
-    logger.raw('  │');
-    logger.raw('  │ The response will contain a question and a session ID');
-    logger.raw('  │ (in the text and in the "heron_session_id" JSON field).');
-    logger.raw('  │');
-    logger.raw('  │ Step 2 — Send each answer:');
-    logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
-    logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
-    logger.raw('  │   "content":"YOUR ANSWER HERE"}],');
-    logger.raw('  │   "heron_session_id":"SESSION_ID_FROM_STEP_1"}');
-    logger.raw('  │');
-    logger.raw('  │ Step 3 — Repeat step 2 with each new answer until the response');
-    logger.raw('  │ says "Interview complete".');
-    logger.raw('  │');
-    logger.raw('  │ Important: answer about THIS specific project — what you actually');
-    logger.raw('  │ do, what systems you connect to, what data you handle. Not general');
-    logger.raw('  │ capabilities. Never reveal actual secret values — just describe');
-    logger.raw('  │ credential types.');
-    logger.raw('  └──────────────────────────────────────────────────────────────────────');
-    logger.raw('');
-    logger.raw('  Option 2 — Set OPENAI_BASE_URL:');
-    logger.raw('');
-    logger.raw(`    OPENAI_BASE_URL=${baseUrl}/v1 python your_agent.py`);
-    logger.raw('');
-    logger.success('Ready — waiting for agents to connect...');
-    logger.raw('');
+  return new Promise<import('node:http').Server>((resolve) => {
+    server.listen(config.port, config.host, () => {
+      const baseUrl = `http://localhost:${config.port}`;
+      logger.raw('');
+      logger.raw(`  \x1b[1mHeron Server\x1b[0m`);
+      logger.raw('');
+      logger.raw(`  Dashboard:  ${baseUrl}`);
+      logger.raw(`  Agent URL:  ${baseUrl}/v1/chat/completions`);
+      logger.raw(`  Reports:    ${config.reportDir}`);
+      logger.raw('');
+      logger.raw(`  \x1b[1mHow to connect an agent:\x1b[0m`);
+      logger.raw('');
+      logger.raw('  Option 1 — Paste this prompt into your agent\'s chat:');
+      logger.raw('');
+      logger.raw('  ┌──────────────────────────────────────────────────────────────────────');
+      logger.raw('  │ I need you to complete a security access review for this project.');
+      logger.raw('  │ Make sequential API calls to the Heron endpoint until it says');
+      logger.raw('  │ "Interview complete".');
+      logger.raw('  │');
+      logger.raw('  │ Step 1 — Start the interview:');
+      logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
+      logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
+      logger.raw('  │   "content":"Hi, I am ready to answer questions about this project."}]}');
+      logger.raw('  │');
+      logger.raw('  │ The response will contain a question and a session ID');
+      logger.raw('  │ (in the text and in the "heron_session_id" JSON field).');
+      logger.raw('  │');
+      logger.raw('  │ Step 2 — Send each answer:');
+      logger.raw(`  │ POST ${baseUrl}/v1/chat/completions`);
+      logger.raw('  │ Body: {"model":"any","messages":[{"role":"user",');
+      logger.raw('  │   "content":"YOUR ANSWER HERE"}],');
+      logger.raw('  │   "heron_session_id":"SESSION_ID_FROM_STEP_1"}');
+      logger.raw('  │');
+      logger.raw('  │ Step 3 — Repeat step 2 with each new answer until the response');
+      logger.raw('  │ says "Interview complete".');
+      logger.raw('  │');
+      logger.raw('  │ Important: answer about THIS specific project — what you actually');
+      logger.raw('  │ do, what systems you connect to, what data you handle. Not general');
+      logger.raw('  │ capabilities. Never reveal actual secret values — just describe');
+      logger.raw('  │ credential types.');
+      logger.raw('  └──────────────────────────────────────────────────────────────────────');
+      logger.raw('');
+      logger.raw('  Option 2 — Set OPENAI_BASE_URL:');
+      logger.raw('');
+      logger.raw(`    OPENAI_BASE_URL=${baseUrl}/v1 python your_agent.py`);
+      logger.raw('');
+      logger.success('Ready — waiting for agents to connect...');
+      logger.raw('');
+      resolve(server);
+    });
   });
 }
 
@@ -289,6 +306,7 @@ async function handleListSessions(res: ServerResponse, sessions: SessionManager)
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
     riskLevel: s.reportJson?.overallRiskLevel ?? null,
+    hasDiff: sessions.hasDiff(s.id),
   }));
 
   json(res, 200, { sessions: list });
@@ -537,6 +555,23 @@ async function handleSessionPage(
     ? `<h2>Report</h2><p class="error-msg">Error: ${escapeHtml(session.error ?? 'Unknown error')}</p>`
     : '';
 
+  const compareSection = session.status === 'complete' && session.report
+    ? sessions.hasDiff(id)
+      ? `<h2>Comparison</h2>
+         <p>This session has been compared against a previous report.</p>
+         <div class="report-actions">
+           <a href="/sessions/${id}/compare" class="btn">View diff</a>
+           <button onclick="document.getElementById('compare-upload').click()" class="btn btn-outline">Replace — upload a different previous report</button>
+         </div>
+         <input type="file" id="compare-upload" accept=".md,.markdown,text/markdown" style="display:none" onchange="uploadCompare(this)">`
+      : `<h2>Compare to previous report</h2>
+         <p>Upload an older Heron audit report (markdown) to see what changed.</p>
+         <div class="report-actions">
+           <button onclick="document.getElementById('compare-upload').click()" class="btn">📁 Upload previous report (.md)</button>
+         </div>
+         <input type="file" id="compare-upload" accept=".md,.markdown,text/markdown" style="display:none" onchange="uploadCompare(this)">`
+    : '';
+
   const html = `<!DOCTYPE html>
 <html>
 <head><title>Heron</title>${FAVICON_LINK}
@@ -551,6 +586,7 @@ async function handleSessionPage(
   <div class="meta" id="session-meta">${session.questionsAsked} questions &middot; started ${session.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC</div>
 
   <div id="report-section">${reportSection}</div>
+  <div id="compare-section">${compareSection}</div>
 
   <h2>Interview Transcript (<span id="qa-count">${transcript.length}</span> Q&amp;A)</h2>
   <div id="transcript-body">${transcript.length === 0 ? '<p>Waiting for agent to respond...</p>' : transcriptHtml}</div>
@@ -575,6 +611,30 @@ async function handleSessionPage(
       }).catch(function() {});
     }, 3000);
   })();
+  </script>` : ''}
+  ${session.status === 'complete' ? `<script>
+  function uploadCompare(input) {
+    var file = input.files[0];
+    if (!file) return;
+    if (file.size > 128 * 1024) {
+      alert('File too large (max 128 KB)');
+      input.value = '';
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      fetch('/api/sessions/${id}/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/markdown' },
+        body: e.target.result,
+      }).then(function(r) {
+        if (r.redirected) { window.location = r.url; return; }
+        if (r.ok) { window.location = '/sessions/${id}/compare'; return; }
+        return r.json().then(function(d) { alert('Upload failed: ' + (d.error || 'unknown')); });
+      }).catch(function(err) { alert('Upload error: ' + err.message); });
+    };
+    reader.readAsText(file);
+  }
   </script>` : ''}
 </body>
 </html>`;
@@ -603,13 +663,14 @@ async function handleLanding(res: ServerResponse, sessions: SessionManager, host
   <div id="sessions-table">${activeSessions.length === 0
     ? '<div class="empty"><p>No sessions yet.</p><p>Connect an agent to <code>/v1/chat/completions</code> to start an interview.</p></div>'
     : `<table>
-    <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead>
+    <thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Compare</th><th>Started</th></tr></thead>
     <tbody>
     ${activeSessions.map(s => `<tr data-id="${s.id}">
       <td><a href="/sessions/${s.id}"><code>${s.id}</code></a></td>
       <td><span class="badge badge-${s.status}">${s.status}</span></td>
       <td>${s.questionsAsked}</td>
       <td>${s.reportJson?.overallRiskLevel ? `<span class="risk risk-${s.reportJson.overallRiskLevel}">${s.reportJson.overallRiskLevel.toUpperCase()}</span>` : '—'}</td>
+      <td>${sessions.hasDiff(s.id) ? `<a href="/sessions/${s.id}/compare">compare</a>` : '—'}</td>
       <td>${s.createdAt.toISOString().slice(0, 19).replace('T', ' ')}</td>
     </tr>`).join('')}
     </tbody>
@@ -649,6 +710,8 @@ Important: answer about THIS specific project — what you actually do, what sys
     <tr><td><code>GET /api/sessions</code></td><td>List all sessions (JSON)</td></tr>
     <tr><td><code>GET /api/sessions/:id</code></td><td>Session details + transcript</td></tr>
     <tr><td><code>GET /api/sessions/:id/report</code></td><td>Download audit report (markdown)</td></tr>
+    <tr><td><code>POST /api/sessions/:id/compare</code></td><td>Upload previous report, generate diff</td></tr>
+    <tr><td><code>GET /sessions/:id/compare</code></td><td>View diff (HTML)</td></tr>
     </tbody>
   </table>
 
@@ -677,7 +740,7 @@ Important: answer about THIS specific project — what you actually do, what sys
         var hasActive = sessions.some(function(s) { return s.status === 'interviewing' || s.status === 'analyzing'; });
         var tbody = table.querySelector('tbody');
         if (!tbody) {
-          table.innerHTML = '<table><thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Started</th></tr></thead><tbody></tbody></table>';
+          table.innerHTML = '<table><thead><tr><th>Session</th><th>Status</th><th>Questions</th><th>Risk</th><th>Compare</th><th>Started</th></tr></thead><tbody></tbody></table>';
           tbody = table.querySelector('tbody');
         }
         sessions.forEach(function(s) {
@@ -685,14 +748,15 @@ Important: answer about THIS specific project — what you actually do, what sys
           if (!row) {
             row = document.createElement('tr');
             row.setAttribute('data-id', s.id);
-            row.innerHTML = '<td><a href="/sessions/' + s.id + '"><code>' + s.id + '</code></a></td><td></td><td></td><td></td><td></td>';
+            row.innerHTML = '<td><a href="/sessions/' + s.id + '"><code>' + s.id + '</code></a></td><td></td><td></td><td></td><td></td><td></td>';
             tbody.insertBefore(row, tbody.firstChild);
           }
           var cells = row.querySelectorAll('td');
           cells[1].innerHTML = '<span class="badge badge-' + s.status + '">' + s.status + '</span>';
           cells[2].textContent = s.questionsAsked;
           cells[3].innerHTML = s.riskLevel ? '<span class="risk risk-' + s.riskLevel + '">' + s.riskLevel.toUpperCase() + '</span>' : '\\u2014';
-          cells[4].textContent = s.createdAt.slice(0,19).replace('T',' ');
+          cells[4].innerHTML = s.hasDiff ? '<a href="/sessions/' + s.id + '/compare">compare</a>' : '\\u2014';
+          cells[5].textContent = s.createdAt.slice(0,19).replace('T',' ');
         });
         if (!hasActive) clearInterval(polling);
       }).catch(function() {});
@@ -703,6 +767,97 @@ Important: answer about THIS specific project — what you actually do, what sys
 </html>`;
 
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+  res.end(html);
+}
+
+// ─── Compare handlers (AAP-32) ────────────────────────────────────────────
+
+const MAX_COMPARE_BODY_BYTES = 128 * 1024;
+
+async function handlePostCompare(
+  req: IncomingMessage,
+  res: ServerResponse,
+  sessions: SessionManager,
+  sessionId: string,
+): Promise<void> {
+  // Stream-read the body with size cap.
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let oversize = false;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    total += buf.length;
+    if (total > MAX_COMPARE_BODY_BYTES) {
+      oversize = true;
+      req.resume(); // drain remaining chunks so the socket can be reused
+      break;
+    }
+    chunks.push(buf);
+  }
+  if (oversize) {
+    json(res, 413, { error: `Upload exceeds ${MAX_COMPARE_BODY_BYTES} byte limit` });
+    return;
+  }
+
+  const uploaded = Buffer.concat(chunks).toString('utf-8');
+  if (!uploaded.trim()) {
+    json(res, 400, { error: 'Empty upload' });
+    return;
+  }
+
+  const session = sessions.getSession(sessionId);
+  if (!session) {
+    json(res, 404, { error: 'Session not found' });
+    return;
+  }
+
+  if (session.status !== 'complete' || !session.report) {
+    json(res, 409, { error: `Session ${sessionId} has no report yet (status: ${session.status})` });
+    return;
+  }
+
+  try {
+    await sessions.compareWithUpload(sessionId, uploaded);
+    res.writeHead(303, { Location: `/sessions/${sessionId}/compare` });
+    res.end();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`Compare failed for ${sessionId}: ${msg}`);
+    json(res, 500, { error: msg });
+  }
+}
+
+async function handleComparePage(
+  res: ServerResponse,
+  sessions: SessionManager,
+  sessionId: string,
+): Promise<void> {
+  const diff = sessions.getDiffContent(sessionId);
+  if (!diff) {
+    json(res, 404, {
+      error: 'No diff exists for this session. Upload a previous report first.',
+    });
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><title>Diff — ${sessionId}</title>${FAVICON_LINK}
+<style>${SHARED_CSS}</style>
+</head>
+<body>
+  <div class="header">${HERON_LOGO}<h1>Heron</h1></div>
+  <p style="margin: 0 0 24px 0;"><a href="/sessions/${sessionId}">&larr; Back to session ${sessionId}</a></p>
+  <h2>Report Comparison</h2>
+  <div class="report-rendered">${markdownToHtml(diff)}</div>
+  <div class="footer">Powered by <a href="https://github.com/theonaai/Heron">Heron</a> &mdash; open-source agent checkpoint</div>
+</body>
+</html>`;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  });
   res.end(html);
 }
 

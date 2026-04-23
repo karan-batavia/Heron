@@ -206,3 +206,32 @@ function extractSystemNames(text: string): string[] {
   }
   return Array.from(found);
 }
+
+// ─── Diff (AAP-32) ──────────────────────────────────────────────────────────
+
+export const DIFF_SYSTEM_PROMPT = `You compare two AI-agent audit reports and return a markdown diff. Preserve exact finding titles from the inputs. Only report changes you can justify from the text — don't invent findings. Produce well-structured markdown with clear section headings.`;
+
+export function buildDiffPrompt(oldReport: string, newReport: string): string {
+  return `Compare these two audit reports for the same AI agent and return a markdown diff describing what changed.
+
+=== OLD REPORT ===
+${oldReport}
+
+=== NEW REPORT ===
+${newReport}
+
+Your output must be markdown with exactly these top-level sections (use \`##\` headings):
+- Summary (a one-row table: Resolved | Added | Severity changes | Systems +/−, plus a line stating the overall risk direction: improved / worsened / unchanged)
+- Resolved (bullet list of findings from OLD that are no longer in NEW; include severity)
+- Added (bullet list of findings in NEW that weren't in OLD; include severity)
+- Severity changes (bullet list of findings that appear in both but with different severity)
+- Systems (subsections: Added / Removed / Scopes changed)
+
+Rules:
+- A finding is "resolved" if it's in OLD and the NEW report clearly doesn't contain an equivalent issue.
+- A finding is "added" if it's in NEW and wasn't in OLD.
+- "Severity changes" means the same semantic finding appears in both with a different severity level. Do NOT list it in both Resolved and Added.
+- Use the exact finding titles from the source reports (don't paraphrase).
+- If a section has nothing to report, still include the heading with "_(none)_".
+- Start the output with a short header block naming both reports (dates and overall risk).`;
+}
