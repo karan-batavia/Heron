@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { generateId } from '../util/id.js';
 import { createProtocol, isStaleAnswer, type InterviewProtocol } from '../interview/protocol.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
@@ -9,6 +10,7 @@ import type { AuditReport, DataQuality, QAPair } from '../report/types.js';
 import type { InterviewQuestion } from '../interview/questions.js';
 import { COMPLIANCE_FIELD_CHECKLIST } from '../llm/prompts.js';
 import * as logger from '../util/logger.js';
+import { diffReports } from '../diff/differ.js';
 
 export type SessionStatus = 'interviewing' | 'analyzing' | 'complete' | 'error';
 
@@ -169,6 +171,45 @@ export class SessionManager {
     return Array.from(this.sessions.values());
   }
 
+  /**
+   * Diff an uploaded markdown report against this session's current report.
+   * Writes `${reportDir}/${sessionId}-diff.md` and returns the diff markdown.
+   * Overwrites any previous diff for this session.
+   */
+  async compareWithUpload(sessionId: string, uploadedMd: string): Promise<string> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    if (session.status !== 'complete' || !session.report) {
+      throw new Error(
+        `Session ${sessionId} has no report yet (status: ${session.status})`,
+      );
+    }
+    if (!this.reportDir) {
+      throw new Error('Server has no reportDir configured; cannot save diff');
+    }
+
+    const diff = await diffReports(uploadedMd, session.report, this.llmClient);
+
+    mkdirSync(this.reportDir, { recursive: true });
+    const diffPath = `${this.reportDir}/${sessionId}-diff.md`;
+    writeFileSync(diffPath, diff, 'utf-8');
+
+    return diff;
+  }
+
+  /** Cheap existence check used by landing page + session page. */
+  hasDiff(sessionId: string): boolean {
+    if (!this.reportDir) return false;
+    return existsSync(`${this.reportDir}/${sessionId}-diff.md`);
+  }
+
+  /** Read the saved diff markdown for a session, or null if none. */
+  getDiffContent(sessionId: string): string | null {
+    if (!this.reportDir) return null;
+    const path = `${this.reportDir}/${sessionId}-diff.md`;
+    if (!existsSync(path)) return null;
+    return readFileSync(path, 'utf-8');
+  }
 
   private async getNextQuestion(session: Session): Promise<InterviewQuestion | null> {
     // Drain the question queue first (clean replacement for monkey-patching)
