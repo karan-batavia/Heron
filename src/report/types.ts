@@ -44,7 +44,10 @@ export const writeOperationSchema = z.object({
   target: z.string(),
   reversible: z.boolean().default(false),
   approvalRequired: z.boolean().default(false),
-  volumePerDay: z.string().default('NOT PROVIDED'),
+  // AAP-43 P0 #2: default to empty string (not "NOT PROVIDED" sentinel).
+  // Callers use isProvided() to detect missing fields, which now renders
+  // an explicit "Unknown — ask deployer" placeholder in customer-facing output.
+  volumePerDay: z.string().default(''),
 });
 export type WriteOperation = z.infer<typeof writeOperationSchema>;
 
@@ -66,9 +69,10 @@ export const systemAssessmentSchema = z.object({
   scopesRequested: z.array(z.string()).default([]),
   scopesNeeded: z.array(z.string()).default([]),
   scopesDelta: z.array(z.string()).default([]),
-  dataSensitivity: z.string().default('NOT PROVIDED'),
+  // AAP-43 P0 #2: empty-string defaults (see volumePerDay note above)
+  dataSensitivity: z.string().default(''),
   blastRadius: z.string().transform(normalizeBlastRadius).pipe(blastRadiusSchema).or(blastRadiusSchema).default('single-user'),
-  frequencyAndVolume: z.string().default('NOT PROVIDED'),
+  frequencyAndVolume: z.string().default(''),
   writeOperations: z.array(writeOperationSchema).default([]),
 });
 export type SystemAssessment = z.infer<typeof systemAssessmentSchema>;

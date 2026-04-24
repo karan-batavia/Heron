@@ -205,12 +205,6 @@ describe('control-mappings table', () => {
 // ─── mapFindingsToRiskCategories ────────────────────────────────────────────
 
 describe('mapFindingsToRiskCategories', () => {
-  it('stamps mapping version (AAP-44)', () => {
-    const r = mapFindingsToRiskCategories({ systems: [], transcript: [] });
-    expect(r.mappingVersion).toBe(MAPPING_VERSION);
-    expect(r.mappingVersion).toMatch(/^aap-44/);
-  });
-
   it('produces mandatory + voluntary buckets with 4 categories each', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],

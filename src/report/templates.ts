@@ -1,17 +1,41 @@
 import type { AuditReport, QAPair, DataQuality, Risk, SystemAssessment, WriteOperation, StructuredCompliance, RegulatoryFlag } from './types.js';
 import type { TypedRegulatoryFlag } from '../compliance/mapper.js';
+import { isProvided, UNKNOWN_PLACEHOLDER } from '../util/provided.js';
+import { isBusinessSystem } from '../util/systems.js';
 
-/** Filter out interview/orchestration platforms that aren't real business systems */
-function isBusinessSystem(s: SystemAssessment): boolean {
-  const id = s.systemId.toLowerCase();
-  if (/\bheron\b/.test(id)) return false;
-  if (/internal\s*(orchestrat|api|platform)/.test(id)) return false;
-  if (/interview\s*(platform|endpoint|api)/.test(id)) return false;
-  if (/audit\s*(platform|endpoint|api)/.test(id)) return false;
-  // Platform session token with no real scopes = orchestration layer
-  if (/platform.?session.?token/i.test(id) && s.scopesRequested.length === 0) return false;
-  return true;
+// ─── AAP-43 P1 #5: overall regulatory status ──────────────────────────────
+
+/**
+ * Reduce all activated framework flags into a single status label + gap
+ * counter. Replaces the prior EU/US/UK jurisdiction matrix which couldn't
+ * vary without US/UK frameworks in the OSS registry.
+ *
+ * Labels (descending severity):
+ *   - "Action Required"      — at least one action-required flag
+ *   - "Needs Clarification"  — at least one clarification-needed flag
+ *   - "Review"               — at least one warning-level flag
+ *   - "Not Triggered"        — no activated framework flags
+ */
+function summarizeOverallStatus(c: StructuredCompliance): string {
+  const all = (c.all ?? []) as RegulatoryFlag[];
+  if (all.length === 0) return 'Not Triggered';
+
+  let label: string;
+  if (all.some(f => f.severity === 'action-required')) label = 'Action Required';
+  else if (all.some(f => f.severity === 'clarification-needed')) label = 'Needs Clarification';
+  else if (all.some(f => f.severity === 'warning')) label = 'Review';
+  else label = 'Not Triggered';
+
+  const mandatoryGaps = all.filter(f => f.tier === 'mandatory' && f.severity !== 'info').length;
+  const voluntaryGaps = all.filter(f => f.tier === 'voluntary' && f.severity !== 'info').length;
+  const parts: string[] = [];
+  if (mandatoryGaps > 0) parts.push(`${mandatoryGaps} mandatory-framework gap${mandatoryGaps === 1 ? '' : 's'}`);
+  if (voluntaryGaps > 0) parts.push(`${voluntaryGaps} voluntary-framework gap${voluntaryGaps === 1 ? '' : 's'}`);
+  const suffix = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  return `${label}${suffix}`;
 }
+
+// isBusinessSystem lives in src/util/systems.ts (shared with analyzer + mapper).
 
 export function renderMarkdownReport(report: AuditReport): string {
   const sections = [
@@ -38,21 +62,15 @@ function renderHeader(report: AuditReport): string {
   const riskIcon = report.overallRiskLevel === 'critical' || report.overallRiskLevel === 'high' ? '!!' : '';
   const dqPart = report.dataQuality ? ` | **Data Quality**: ${report.dataQuality.score}/100` : '';
 
-  // Regulatory one-liner (AAP-31: derived from compliance.all)
+  // AAP-43 P1 #5: single overall regulatory status label (replaces
+  // EU/US/UK matrix). The matrix implied we'd analyzed each jurisdiction,
+  // but we don't know the deployer's jurisdiction and only EU-mandatory
+  // frameworks are in OSS scope (see AAP-42). A single label + gap counter
+  // is honest: "here is the highest unresolved severity across activated
+  // frameworks, and how many mandatory vs voluntary gaps there are."
   let regLine = '';
   if (report.compliance) {
-    const all = report.compliance.all;
-    const summarizeJurisdiction = (flags: RegulatoryFlag[]): string => {
-      if (flags.some(f => f.severity === 'action-required')) return 'Action Required';
-      if (flags.some(f => f.severity === 'clarification-needed')) return 'Needs Clarification';
-      if (flags.some(f => f.severity === 'warning')) return 'Review';
-      return 'Clear';
-    };
-    const regParts: string[] = [];
-    regParts.push(`EU: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('EU')))}`);
-    regParts.push(`US: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('US')))}`);
-    regParts.push(`UK: ${summarizeJurisdiction(all.filter((f: RegulatoryFlag) => f.mandatoryIn?.includes('UK')))}`);
-    regLine = `\n**Regulatory**: ${regParts.join(' | ')}`;
+    regLine = `\n**Regulatory Status**: ${summarizeOverallStatus(report.compliance as StructuredCompliance)}`;
   }
 
   return `# Agent Access Audit Report
@@ -151,13 +169,13 @@ ${report.summary}`;
 function renderAgentProfile(report: AuditReport): string {
   const lines = [`- **Purpose**: ${report.agentPurpose}`];
   if (report.agentTrigger) lines.push(`- **Trigger**: ${report.agentTrigger}`);
-  if (report.agentOwner && report.agentOwner !== 'NOT PROVIDED') {
+  if (isProvided(report.agentOwner)) {
     lines.push(`- **Owner**: ${report.agentOwner}`);
   }
 
   // Frequency from first system if available
   const freq = report.systems[0]?.frequencyAndVolume;
-  if (freq && freq !== 'NOT PROVIDED') lines.push(`- **Frequency**: ${freq}`);
+  if (isProvided(freq)) lines.push(`- **Frequency**: ${freq}`);
 
   return `## Agent Profile
 
@@ -204,30 +222,34 @@ function renderSystemCard(sys: SystemAssessment): string {
   const risk = computeSystemRisk(sys);
 
   // Scopes
-  const scopes = sys.scopesRequested.filter(s => s !== 'NOT PROVIDED');
-  rows.push(`| **Scopes granted** | ${scopes.length > 0 ? scopes.join(', ') : '*NOT PROVIDED*'} |`);
+  const scopes = sys.scopesRequested.filter(isProvided);
+  rows.push(`| **Scopes granted** | ${scopes.length > 0 ? scopes.join(', ') : `*${UNKNOWN_PLACEHOLDER}*`} |`);
 
-  const needed = sys.scopesNeeded.filter(s => s !== 'NOT PROVIDED');
+  const needed = sys.scopesNeeded.filter(isProvided);
   if (needed.length > 0) {
     rows.push(`| **Scopes needed** | ${needed.join(', ')} |`);
   }
 
-  const excessive = sys.scopesDelta;
+  const excessive = sys.scopesDelta.filter(isProvided);
   if (excessive.length > 0) {
     rows.push(`| **Excessive** | ${excessive.join(', ')} |`);
   }
 
   // Data sensitivity
-  if (sys.dataSensitivity && sys.dataSensitivity !== 'NOT PROVIDED') {
+  if (isProvided(sys.dataSensitivity)) {
     rows.push(`| **Data** | ${sys.dataSensitivity} |`);
+  } else {
+    rows.push(`| **Data** | *${UNKNOWN_PLACEHOLDER}* |`);
   }
 
   // Blast radius
   rows.push(`| **Blast radius** | ${sys.blastRadius} |`);
 
   // Frequency
-  if (sys.frequencyAndVolume && sys.frequencyAndVolume !== 'NOT PROVIDED') {
+  if (isProvided(sys.frequencyAndVolume)) {
     rows.push(`| **Frequency** | ${sys.frequencyAndVolume} |`);
+  } else {
+    rows.push(`| **Frequency** | *${UNKNOWN_PLACEHOLDER}* |`);
   }
 
   // Write operations — inline in card
@@ -293,24 +315,49 @@ function getFrameworkBasis(findingType: string, compliance?: StructuredComplianc
 }
 
 function renderFindings(risks: Risk[], compliance?: StructuredCompliance): string {
-  const allRisks = [...risks];
+  if (risks.length === 0) {
+    return `## Findings\n\n_No risks identified._`;
+  }
 
-  const sorted = allRisks
-    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
+  const sorted = [...risks].sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
 
-  const rows = sorted.map((r, i) => {
+  const renderRow = (r: Risk, i: number): string => {
     const id = `HERON-${String(i + 1).padStart(3, '0')}`;
     const findingType = inferFindingType(r);
     const basis = findingType ? getFrameworkBasis(findingType, compliance) : '—';
     const remediation = r.mitigation ?? '—';
     return `| ${id} | ${r.severity.toUpperCase()} | ${basis} | ${r.title} | ${r.description} | ${remediation} |`;
-  }).join('\n');
+  };
+
+  const tableHeader = `| ID | Severity | Framework Basis | Finding | Description | Recommendation |
+|----|----------|-----------------|---------|-------------|----------------|`;
+
+  // AAP-43 P2 #7: Top-N triage. A flat 4+ finding table reads as "everything
+  // is equal weight." A senior auditor triages: here's the real issue, and
+  // here's the long tail. Split at 3; fold the rest into a collapsed section
+  // so readers still have access without being buried.
+  if (sorted.length <= 3) {
+    const rows = sorted.map(renderRow).join('\n');
+    return `## Findings\n\n${tableHeader}\n${rows}`;
+  }
+
+  const top = sorted.slice(0, 3).map(renderRow).join('\n');
+  const rest = sorted.slice(3).map((r, i) => renderRow(r, i + 3)).join('\n');
 
   return `## Findings
 
-| ID | Severity | Framework Basis | Finding | Description | Recommendation |
-|----|----------|-----------------|---------|-------------|----------------|
-${rows}`;
+### Top 3 Findings
+
+${tableHeader}
+${top}
+
+<details>
+<summary><strong>Additional findings (${sorted.length - 3})</strong></summary>
+
+${tableHeader}
+${rest}
+
+</details>`;
 }
 
 // ─── Positive Findings ─────────────────────────────────────────────────────
@@ -388,13 +435,13 @@ function renderVerdict(report: AuditReport): string {
     if (!isBusinessSystem(sys)) continue;
 
     for (const scope of sys.scopesDelta) {
-      if (scope !== 'NOT PROVIDED') {
+      if (isProvided(scope)) {
         if (!excessiveBySystem.has(sys.systemId)) excessiveBySystem.set(sys.systemId, []);
         excessiveBySystem.get(sys.systemId)!.push(scope);
       }
     }
     for (const scope of sys.scopesNeeded) {
-      if (!sys.scopesRequested.includes(scope) && scope !== 'NOT PROVIDED') {
+      if (!sys.scopesRequested.includes(scope) && isProvided(scope)) {
         if (!missingBySystem.has(sys.systemId)) missingBySystem.set(sys.systemId, []);
         missingBySystem.get(sys.systemId)!.push(scope);
       }
@@ -643,7 +690,10 @@ function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport)
     const label = GAP_LABELS[findingType] ?? findingType;
     const description = buildGapDescription(findingType, report);
 
-    // Group controls by framework for compact "Affects" line
+    // Group controls by framework for compact "Affects" line.
+    // AAP-43 P2 #9: cap at 3 most-relevant controls per framework. Listing
+    // all 10 Annex III articles dilutes the signal — senior auditors pick
+    // the tightest citation. Remainder is summarized as "+N more".
     const byFramework = new Map<string, string[]>();
     for (const f of flags) {
       const fwName = frameworkShortName(f.frameworkId);
@@ -654,9 +704,16 @@ function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport)
       byFramework.set(fwName, existing);
     }
 
-    const affectsParts = [...byFramework.entries()].map(([fw, ctrls]) =>
-      ctrls.length > 0 ? `${fw} (${ctrls.join(', ')})` : fw,
-    );
+    const MAX_CONTROLS_PER_FRAMEWORK = 3;
+    const affectsParts = [...byFramework.entries()].map(([fw, ctrls]) => {
+      if (ctrls.length === 0) return fw;
+      if (ctrls.length <= MAX_CONTROLS_PER_FRAMEWORK) {
+        return `${fw} (${ctrls.join(', ')})`;
+      }
+      const top = ctrls.slice(0, MAX_CONTROLS_PER_FRAMEWORK);
+      const rest = ctrls.length - MAX_CONTROLS_PER_FRAMEWORK;
+      return `${fw} (${top.join(', ')}, +${rest} more)`;
+    });
 
     out += `#### ${label}\n\n`;
     out += `${description}\n\n`;
@@ -669,40 +726,53 @@ function renderFindingFirstDetail(c: StructuredCompliance, report?: AuditReport)
 // ─── Obligations Requiring Further Review ─────────────────────────────────
 
 function renderObligationsChecklist(c: StructuredCompliance, report?: AuditReport): string {
-  const allFlags = (c.all ?? []) as TypedRegulatoryFlag[];
   const activated = new Set((c as any).frameworksActivated ?? []);
   const rows: Array<{ obligation: string; action: string }> = [];
 
-  // GDPR-triggered obligations
+  // AAP-43 P1 #3: GDPR obligations are signal-gated, not dumped as a 14-row
+  // boilerplate. Each row requires an explicit signal; if no PII/decisions/
+  // transfer signals fire, the table is skipped entirely.
   const hasGdpr = activated.has('gdpr');
-  if (hasGdpr) {
-    rows.push({ obligation: 'GDPR Art. 6', action: 'Decide and document WHY you are allowed to process this data (e.g. legitimate business interest — must document a balancing test)' });
-    rows.push({ obligation: 'GDPR Art. 13/14', action: 'Tell people you are collecting their data: what, why, how long, and their rights' });
-    rows.push({ obligation: 'GDPR Art. 15', action: 'Be ready to show someone all data you hold on them if they ask' });
-    rows.push({ obligation: 'GDPR Art. 17', action: 'Be ready to delete someone\'s data from all systems if they ask' });
-    rows.push({ obligation: 'GDPR Art. 21', action: 'Let people opt out of being profiled for sales/marketing — you must stop if they object' });
-    rows.push({ obligation: 'GDPR Art. 28', action: 'Sign data processing contracts with every service you send data to (Google, Apify, etc.)' });
-    rows.push({ obligation: 'GDPR Art. 30', action: 'Keep a written log of what personal data you process, why, and who has access' });
-    rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Set rules for how long you keep data — then actually delete it on schedule' });
+  const signals = c.signals;
 
-    const hasProfiling = allFlags.some(f => f.triggeredBy === 'decisions-about-people');
-    const hasLargeScale = (report?.systems?.length ?? 0) >= 3;
-    if (hasProfiling || hasLargeScale) {
-      rows.push({ obligation: 'GDPR Art. 35', action: 'Do a privacy impact assessment before going live (you profile people at scale — this is likely required)' });
+  if (hasGdpr && signals) {
+    // ── PII-driven obligations ──────────────────────────────────────────
+    if (signals.hasPII) {
+      rows.push({ obligation: 'GDPR Art. 6', action: 'Decide and document WHY you are allowed to process this data (e.g. legitimate business interest — must document a balancing test)' });
+      rows.push({ obligation: 'GDPR Art. 13/14', action: 'Tell people you are collecting their data: what, why, how long, and their rights' });
+      rows.push({ obligation: 'GDPR Art. 15', action: 'Be ready to show someone all data you hold on them if they ask' });
+      rows.push({ obligation: 'GDPR Art. 17', action: "Be ready to delete someone's data from all systems if they ask" });
+      rows.push({ obligation: 'GDPR Art. 30', action: 'Keep a written log of what personal data you process, why, and who has access' });
+      rows.push({ obligation: 'GDPR Art. 5(1)(e)', action: 'Set rules for how long you keep data — then actually delete it on schedule' });
     }
 
-    rows.push({ obligation: 'GDPR Arts. 44-49', action: 'If data leaves EU (e.g. to US-based Google/Apify), you need a legal basis for that transfer' });
+    // ── Profiling / automated decisions ─────────────────────────────────
+    if (signals.hasDecisionsAboutPeople) {
+      rows.push({ obligation: 'GDPR Art. 21', action: 'Let people opt out of being profiled for sales/marketing — you must stop if they object' });
+    }
+
+    // ── Processor contracts ─────────────────────────────────────────────
+    if (signals.hasPII && signals.hasExternalProcessors) {
+      rows.push({ obligation: 'GDPR Art. 28', action: 'Sign data processing contracts with every service you send data to (Google, Apify, etc.)' });
+    }
+
+    // ── DPIA: large-scale OR decisions OR sensitive PII ─────────────────
+    if (signals.hasLargeScaleProcessing || signals.hasDecisionsAboutPeople || signals.hasSensitivePII) {
+      rows.push({ obligation: 'GDPR Art. 35', action: 'Do a privacy impact assessment before going live (large-scale / profiling / sensitive data → likely required)' });
+    }
+
+    // ── International transfer ──────────────────────────────────────────
+    if (signals.hasPII && signals.hasInternationalTransfer) {
+      rows.push({ obligation: 'GDPR Arts. 44-49', action: 'Data leaves the EU (e.g. to US-based Google/Apify) — you need a legal basis for that transfer (SCCs, adequacy decision, etc.)' });
+    }
+
+    // ── Art. 22 automated-decisions safeguard ───────────────────────────
+    if (signals.hasDecisionsAboutPeople) {
+      rows.push({ obligation: 'GDPR Art. 22', action: 'AI makes decisions about people: ensure a human can review, people can contest, and the logic is explainable' });
+    }
   }
 
-  // Automated decisions
-  const hasDecisions = allFlags.some(f =>
-    f.triggeredBy === 'decisions-about-people' && !/no decisions about people/i.test(f.description),
-  );
-  if (hasDecisions) {
-    rows.push({ obligation: 'GDPR Art. 22', action: 'If AI makes decisions about people: ensure a human can review, people can contest, and the logic is explainable' });
-  }
-
-  // Always applicable
+  // Always applicable — baseline operational obligations
   rows.push({ obligation: 'Credentials', action: 'Store API keys/tokens in a secrets manager (not in code or env files), rotate them regularly' });
   rows.push({ obligation: 'Platform ToS', action: 'Check you are not violating the rules of LinkedIn, Google, or other connected services (scraping, rate limits, usage policies)' });
   rows.push({ obligation: 'Incident response', action: 'Have a plan: if data leaks, who do you notify and within what timeframe? (EU: 72 hours to regulator)' });
