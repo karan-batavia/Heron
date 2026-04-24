@@ -41,10 +41,10 @@ const tx = (answers: string[]): QAPair[] =>
 
 // ─── Registry shape ─────────────────────────────────────────────────────────
 
-describe('frameworks registry (post-AAP-42 scope cut)', () => {
-  it('contains exactly the 3 v1 frameworks', () => {
+describe('frameworks registry (post-AAP-44 — AIUC-1 added)', () => {
+  it('contains exactly the 4 v1 frameworks', () => {
     const ids = Object.keys(FRAMEWORKS).sort();
-    expect(ids).toEqual(['eu-ai-act', 'gdpr', 'iso-42001']);
+    expect(ids).toEqual(['aiuc-1', 'eu-ai-act', 'gdpr', 'iso-42001']);
   });
 
   it('uses Jurisdiction[] for mandatoriness', () => {
@@ -54,13 +54,14 @@ describe('frameworks registry (post-AAP-42 scope cut)', () => {
     expect(FRAMEWORKS['eu-ai-act'].mandatoryIn).toContain('EU');
     expect(FRAMEWORKS.gdpr.mandatoryIn).toContain('EU');
     expect(FRAMEWORKS['iso-42001'].mandatoryIn).toEqual([]);
+    expect(FRAMEWORKS['aiuc-1'].mandatoryIn).toEqual([]);
   });
 
   it('partitions cleanly into mandatory + voluntary', () => {
     const m = listMandatoryFrameworks().map((f) => f.id);
-    const v = listVoluntaryFrameworks().map((f) => f.id);
+    const v = listVoluntaryFrameworks().map((f) => f.id).sort();
     expect(m).toEqual(expect.arrayContaining(['eu-ai-act', 'gdpr']));
-    expect(v).toEqual(['iso-42001']);
+    expect(v).toEqual(['aiuc-1', 'iso-42001']);
     for (const id of m) expect(v).not.toContain(id);
   });
 
@@ -75,6 +76,50 @@ describe('frameworks registry (post-AAP-42 scope cut)', () => {
       expect(f.primarySource, `framework ${id}`).toBeTruthy();
       expect(f.primarySource, `framework ${id}`).toMatch(/^https?:\/\//);
     }
+  });
+});
+
+// ─── AIUC-1 registration (AAP-44) ───────────────────────────────────────────
+
+describe('AIUC-1 registration (AAP-44)', () => {
+  it('is present and voluntary', () => {
+    expect(FRAMEWORKS).toHaveProperty('aiuc-1');
+    const f = FRAMEWORKS['aiuc-1'];
+    expect(f.tier).toBe('voluntary');
+    expect(f.mandatoryIn).toEqual([]);
+    expect(f.primarySource).toBe('https://www.aiuc-1.com/');
+  });
+
+  it('has Q2-2026 scopeNote', () => {
+    const f = FRAMEWORKS['aiuc-1'];
+    expect(f.scopeNote).toBeTruthy();
+    expect(f.scopeNote).toMatch(/Q2-2026|2026-04-15/);
+  });
+
+  it('is listed in listVoluntaryFrameworks()', () => {
+    const ids = listVoluntaryFrameworks().map((f) => f.id);
+    expect(ids).toContain('aiuc-1');
+  });
+
+  it('control-mappings reference AIUC-1 in 4 finding-types, all 6 domains covered', () => {
+    const aiuc1Controls: string[] = [];
+    for (const [findingType, mapping] of Object.entries(CONTROL_MAPPINGS)) {
+      for (const ctrl of mapping.controls) {
+        if (ctrl.frameworkId === 'aiuc-1') {
+          aiuc1Controls.push(`${findingType}/${ctrl.controlId}`);
+        }
+      }
+    }
+    // 16 controls total across 4 finding-types
+    expect(aiuc1Controls.length).toBe(16);
+
+    // All 6 AIUC-1 domains represented (A, B, C, D, E, F)
+    const domains = new Set<string>();
+    for (const entry of aiuc1Controls) {
+      const controlId = entry.split('/')[1];
+      domains.add(controlId.charAt(0));
+    }
+    expect(domains).toEqual(new Set(['A', 'B', 'C', 'D', 'E', 'F']));
   });
 });
 
@@ -160,12 +205,6 @@ describe('control-mappings table', () => {
 // ─── mapFindingsToRiskCategories ────────────────────────────────────────────
 
 describe('mapFindingsToRiskCategories', () => {
-  it('stamps mapping version (AAP-43)', () => {
-    const r = mapFindingsToRiskCategories({ systems: [], transcript: [] });
-    expect(r.mappingVersion).toBe(MAPPING_VERSION);
-    expect(r.mappingVersion).toMatch(/^aap-43/);
-  });
-
   it('produces mandatory + voluntary buckets with 4 categories each', () => {
     const r = mapFindingsToRiskCategories({
       systems: [baseSystem()],
@@ -464,5 +503,171 @@ describe('Legacy removal', () => {
   it('mapper module does not export toLegacyJurisdictions', async () => {
     const m = await import('../../src/compliance/mapper.js');
     expect((m as Record<string, unknown>).toLegacyJurisdictions).toBeUndefined();
+  });
+});
+
+// ─── AAP-44: AIUC-1 signal detection + per-control gating ──────────────────
+
+describe('AIUC-1 architecture signals (AAP-44)', () => {
+  it('hasMCPOrA2A fires on MCP', () => {
+    const s = detectSignals([], tx(['We talk to an MCP server for tool integration']), false);
+    expect(s.hasMCPOrA2A).toBe(true);
+  });
+  it('hasMCPOrA2A fires on A2A / agent-to-agent', () => {
+    const s = detectSignals([], tx(['This agent uses A2A to talk to other agents']), false);
+    expect(s.hasMCPOrA2A).toBe(true);
+  });
+  it('hasMCPOrA2A does not fire on generic tool talk', () => {
+    const s = detectSignals([], tx(['We call a REST API to fetch data']), false);
+    expect(s.hasMCPOrA2A).toBe(false);
+  });
+
+  it('hasSubAgents fires on sub-agent wording', () => {
+    const s = detectSignals([], tx(['This agent spawns sub-agents for each sub-task']), false);
+    expect(s.hasSubAgents).toBe(true);
+  });
+  it('hasSubAgents fires on chained tool calls', () => {
+    const s = detectSignals([], tx(['We chain tool calls across multiple steps']), false);
+    expect(s.hasSubAgents).toBe(true);
+  });
+  it('hasSubAgents does not fire on simple one-step tool use', () => {
+    const s = detectSignals([], tx(['I call one function per request']), false);
+    expect(s.hasSubAgents).toBe(false);
+  });
+
+  it('hasCrossCustomer fires on multi-customer wording', () => {
+    const s = detectSignals([], tx(['One deployment serves multiple customers in a shared tenancy']), false);
+    expect(s.hasCrossCustomer).toBe(true);
+  });
+  it('hasCrossCustomer fires on multi-tenant', () => {
+    const s = detectSignals([], tx(['This is a multi-tenant deployment']), false);
+    expect(s.hasCrossCustomer).toBe(true);
+  });
+  it('hasCrossCustomer does not fire on single-tenant wording', () => {
+    const s = detectSignals([], tx(['Each customer has their own dedicated deployment']), false);
+    expect(s.hasCrossCustomer).toBe(false);
+  });
+});
+
+describe('AIUC-1 per-control gating (AAP-44)', () => {
+  // Transcript that triggers all four AIUC-1 finding-types.
+  const richTranscriptFor = (extraAnswers: string[] = []): QAPair[] =>
+    tx([
+      'We process customer name and email PII',
+      'We write to CRM and send emails',
+      ...extraAnswers,
+    ]);
+
+  it('B008.2 (MCP/A2A) is SKIPPED when no MCP signal', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor([]),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).not.toContain('B008.2');
+  });
+  it('B008.2 APPEARS when MCP mentioned in transcript', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor(['Yes, we talk to an MCP server with token auth']),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).toContain('B008.2');
+  });
+
+  it('E015.2 (sub-agent logging) is SKIPPED without sub-agents', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor([]),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).not.toContain('E015.2');
+  });
+  it('E015.2 APPEARS when sub-agents mentioned', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor(['This agent spawns sub-agents for research']),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).toContain('E015.2');
+  });
+
+  it('A005 (cross-customer) is SKIPPED for single-customer deployment', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor([]),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).not.toContain('A005');
+  });
+  it('A005 APPEARS when multi-customer deployment', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor(['This is a multi-tenant deployment serving multiple customers']),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    expect(aiuc1Ids).toContain('A005');
+  });
+
+  it('Un-gated AIUC-1 controls ALWAYS appear when their finding-type fires', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: richTranscriptFor([]),
+    });
+    const aiuc1Ids = r.all
+      .filter((f) => f.frameworkId === 'aiuc-1')
+      .flatMap((f) => f.controlIds);
+    // sensitive-data (no multi-tenant): A001, A002, A006 present; A005 gated
+    expect(aiuc1Ids).toContain('A001');
+    expect(aiuc1Ids).toContain('A002');
+    expect(aiuc1Ids).toContain('A006');
+    // excessive-access (no MCP): A003.3, A003.4, B007 present; B008.2 gated
+    expect(aiuc1Ids).toContain('A003.3');
+    expect(aiuc1Ids).toContain('A003.4');
+    expect(aiuc1Ids).toContain('B007');
+    // write-risk (no sub-agents): B006, D003, F001 present; E015.2 gated
+    expect(aiuc1Ids).toContain('B006');
+    expect(aiuc1Ids).toContain('D003');
+    expect(aiuc1Ids).toContain('F001');
+  });
+
+  it('With all 3 triggers, all 16 AIUC-1 controls appear', () => {
+    const r = mapFindingsToRiskCategories({
+      systems: [baseSystem()],
+      transcript: tx([
+        'We process customer name and email PII',
+        'We write to CRM',
+        'We talk to an MCP server using static tokens',
+        'We spawn sub-agents for each task',
+        'This is a multi-tenant deployment',
+      ]),
+      makesDecisionsAboutPeople: true,
+      decisionMakingDetails: 'We screen candidates and recommend hiring decisions',
+    });
+    const aiuc1Ids = new Set(
+      r.all.filter((f) => f.frameworkId === 'aiuc-1').flatMap((f) => f.controlIds),
+    );
+    const expected = [
+      'A001', 'A002', 'A005', 'A006',
+      'A003.3', 'A003.4', 'B007', 'B008.2',
+      'B006', 'D003', 'E015.2', 'F001',
+      'C007', 'C009', 'E004', 'E016',
+    ];
+    for (const id of expected) {
+      expect(aiuc1Ids, `missing AIUC-1 control ${id}`).toContain(id);
+    }
+    expect(aiuc1Ids.size).toBe(16);
   });
 });

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added (AAP-44, 2026-04-24) — AIUC-1 compliance framework
+
+- New voluntary framework `aiuc-1` (AIUC-1, Q2-2026 release pinned to 2026-04-15). Agent-native standard — six domains (A Data & Privacy, B Security, C Safety, D Reliability, E Accountability, F Society). Quarterly release cadence (Jan/Apr/Jul/Oct 15).
+- 16 AIUC-1 controls mapped across 4 finding-types, covering all six domains:
+  - `sensitive-data`: A001, A002, A005*, A006
+  - `excessive-access`: A003.3, A003.4, B007, B008.2*
+  - `write-risk`: B006, D003, E015.2*, F001
+  - `decisions-about-people`: C007, C009, E004, E016
+  - *Signal-gated — rendered only when applicable architecture detected (multi-customer / MCP / sub-agents).*
+- `FRAMEWORK_IDS` extended from 3 → 4. `voluntary()` helper extended with optional `scopeNote`.
+- `FrameworkControl` gains optional `gatedBy?: string[]` for per-control signal gating — controls are suppressed unless at least one named `ComplianceSignals` flag is truthy.
+- `ComplianceSignals` extended with 3 AIUC-1 architecture signals: `hasMCPOrA2A`, `hasSubAgents`, `hasCrossCustomer` — detected via regex on interview transcript.
+- 5 new interview questions (priorities 11–15) for Q2-2026 differentiators: agent identity, cross-customer isolation, sub-agents/tool-chaining, MCP/A2A auth, upstream model + APIs. All reuse existing `access`/`data`/`writes` categories — no schema change. Questions extract only self-observable agent facts; org-policy gaps (accountability, DPAs, annual reviews) surface in the report as control-note guidance for human reviewers, not as prompts to the agent.
+- Applicability summary + `frameworkShortName` render AIUC-1 with `"Q2-2026"` pin label.
+- `MAPPING_VERSION` bumped to `aap-44.2026-04-24`.
+- Control notes paraphrased (NOT copied verbatim from aiuc-1.com — license is ambiguous until legal clarity).
+
 ### Changed (AAP-42, 2026-04-23) — OSS v1 framework scope cut
 
 - **BREAKING**: Framework registry reduced from 10 to 3 entries. Surviving: EU AI Act, GDPR, ISO/IEC 42001. Removed: UK GDPR / DPA 2018, Colorado AI Act (SB 24-205), HIPAA, CCPA / CPRA, NIST AI RMF, ISO/IEC 23894, SOC 2. Removed frameworks stay in git history — consumers that need them must pin to the prior commit or resurrect via `git revert`.

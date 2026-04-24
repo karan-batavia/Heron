@@ -153,3 +153,56 @@ describe('Template — EU AI Act single-entry with classification scope', () => 
     expect(md).toMatch(/EU AI Act — Limited-Risk \(Art\. 50 transparency\)/);
   });
 });
+
+// ─── AAP-44: AIUC-1 rendering ───────────────────────────────────────────────
+
+describe('Template — AIUC-1 (AAP-44)', () => {
+  const aiuc1Flag = {
+    framework: 'AIUC-1 — A003.3, A003.4',
+    severity: 'warning' as const,
+    description: 'Agent holds permissions beyond stated need. Activates AIUC-1 controls (A003.3, A003.4). Narrow scopes to the minimum required.',
+    controlIds: ['A003.3', 'A003.4'],
+    category: 'privacy' as const,
+    tier: 'voluntary' as const,
+    mandatoryIn: [] as string[],
+    frameworkId: 'aiuc-1',
+    triggeredBy: 'excessive-access',
+  };
+
+  const aiuc1Compliance: StructuredCompliance = {
+    mappingVersion: MAPPING_VERSION,
+    mandatory: {
+      privacy: [],
+      ip: [],
+      'consumer-protection': [],
+      'sector-specific': [],
+    },
+    voluntary: {
+      privacy: [aiuc1Flag],
+      ip: [],
+      'consumer-protection': [],
+      'sector-specific': [],
+    },
+    frameworksActivated: ['aiuc-1'],
+    all: [aiuc1Flag],
+    euAiActClassification: { classification: 'limited', annexIIICategories: [] },
+  } as StructuredCompliance;
+
+  it('renders AIUC-1 with Q2-2026 pin in Applicability Summary voluntary section', () => {
+    const md = renderStructuredCompliance(aiuc1Compliance);
+    expect(md).toContain('### Applicability Summary');
+    expect(md).toContain('**Voluntary Frameworks**');
+    expect(md).toContain('AIUC-1 (Q2-2026)');
+  });
+
+  it('AIUC-1 appears in **Affects:** line of finding detail', () => {
+    const md = renderStructuredCompliance(aiuc1Compliance);
+    expect(md).toContain('**Affects:**');
+    expect(md).toMatch(/AIUC-1 \(Q2-2026\)/);
+  });
+
+  it('Methodology line mentions AIUC-1 with Q2-2026 pin', () => {
+    const md = renderStructuredCompliance(aiuc1Compliance);
+    expect(md).toMatch(/AIUC-1.*Q2-2026/);
+  });
+});

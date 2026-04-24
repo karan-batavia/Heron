@@ -21,7 +21,7 @@ const c = (
   frameworkId: FrameworkControl['frameworkId'],
   controlId: string,
   note?: string,
-  opts?: { annexIII?: boolean },
+  opts?: { annexIII?: boolean; gatedBy?: string[] },
 ): FrameworkControl => ({ frameworkId, controlId, note, ...opts });
 
 // ─── Mappings by finding type ──────────────────────────────────────────────
@@ -39,6 +39,11 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('eu-ai-act', 'Art. 9(2)(a)', 'Risk management — identification and analysis (high-risk baseline reference).'),
       c('eu-ai-act', 'Art. 15(4-5)', 'Accuracy and robustness — resilience to misuse (baseline reference).'),
       c('gdpr', 'Art. 25', 'Data protection by design and by default.'),
+      // ── AIUC-1 (Q2-2026) ──
+      c('aiuc-1', 'A003.3', 'Agent has its own non-human identity separate from the invoking user.'),
+      c('aiuc-1', 'A003.4', 'Agent scopes bounded by least-privilege for its stated task.'),
+      c('aiuc-1', 'B007', 'User-level access privileges enforced for every agent action.'),
+      c('aiuc-1', 'B008.2', 'MCP / A2A interfaces require authentication, encrypted transport, and integrity protection.', { gatedBy: ['hasMCPOrA2A'] }),
     ],
   },
 
@@ -53,6 +58,11 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('iso-42001', 'A.5.3', 'Roles and responsibilities for AI operations.'),
       c('eu-ai-act', 'Art. 14(4)(d)', 'Human oversight — override/stop function (baseline).'),
       c('eu-ai-act', 'Art. 9(6)-(7)', 'Risk management testing before deployment (baseline reference).'),
+      // ── AIUC-1 (Q2-2026) ──
+      c('aiuc-1', 'B006', 'Unauthorized agent actions blocked at the tool/effect boundary.'),
+      c('aiuc-1', 'D003', 'Restrict unsafe tool-calls: allowlist tools, validate arguments, refuse destructive ops without approval.'),
+      c('aiuc-1', 'E015.2', 'Log every sub-agent and tool-call invocation with inputs, outputs, and principal.', { gatedBy: ['hasSubAgents'] }),
+      c('aiuc-1', 'F001', 'Prevent cyber misuse: stop the agent from being used to harvest credentials, exfiltrate data, or launch attacks.'),
     ],
   },
 
@@ -74,6 +84,11 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('gdpr', 'Art. 6', 'Lawful basis for processing.'),
       c('gdpr', 'Art. 35', 'DPIA for high-risk processing.'),
       c('gdpr', 'Art. 33', '72-hour breach notification.'),
+      // ── AIUC-1 (Q2-2026) ──
+      c('aiuc-1', 'A001', 'Input data policy: document lawful basis, sources, and allowed uses.'),
+      c('aiuc-1', 'A002', 'Output data policy: govern retention, downstream sharing, and deletion.'),
+      c('aiuc-1', 'A005', "Cross-customer isolation: one customer's data never leaks into another's session, cache, logs, or fine-tune set.", { gatedBy: ['hasCrossCustomer'] }),
+      c('aiuc-1', 'A006', 'PII leakage prevention: redaction and output filtering for personal data.'),
     ],
   },
 
@@ -144,6 +159,11 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('eu-ai-act', 'Art. 49', 'EU database registration.', { annexIII: true }),
       c('eu-ai-act', 'Art. 72', 'Post-market monitoring.', { annexIII: true }),
       c('gdpr', 'Art. 22', 'Right not to be subject to solely automated decisions.'),
+      // ── AIUC-1 (Q2-2026) ──
+      c('aiuc-1', 'C007', 'Human-in-the-loop review for consequential decisions.'),
+      c('aiuc-1', 'C009', 'Real-time override: operator can halt or reverse agent decisions live.'),
+      c('aiuc-1', 'E004', 'Assigned accountability: a named owner is responsible for agent behaviour.'),
+      c('aiuc-1', 'E016', 'AI disclosure: inform affected persons that an AI agent is involved.'),
     ],
   },
 };

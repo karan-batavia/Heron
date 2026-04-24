@@ -99,6 +99,11 @@ export interface ComplianceSignals {
   hasExternalProcessors: boolean;
   /** Heuristic: >=3 business systems OR >=1 org-wide blast radius system. */
   hasLargeScaleProcessing: boolean;
+
+  // ── AIUC-1 architecture signals (AAP-44) ───────────────────────────────
+  hasMCPOrA2A: boolean;       // agent uses Model Context Protocol or agent-to-agent
+  hasSubAgents: boolean;      // agent spawns sub-agents or chains tool calls
+  hasCrossCustomer: boolean;  // agent serves multiple customers in one deployment
 }
 
 // EU AI Act Annex III §1 — biometric identification/categorisation/emotion recognition.
@@ -197,6 +202,17 @@ export function detectSignals(
   const isLawEnforcementContext = LAW_ENFORCEMENT_PATTERN.test(combinedText);
   const hasEssentialServicesSignal = ESSENTIAL_SERVICES_PATTERN.test(combinedText);
 
+  // ── AIUC-1 architecture signals (AAP-44) ──────────────────────────────
+  // Sourced from transcript text (answers to Q11–15). Used for per-control
+  // `gatedBy` filtering so that AIUC-1 controls only render when the
+  // corresponding architecture is actually in play.
+  const hasMCPOrA2A =
+    /\bmcp\b|model\s+context\s+protocol|\ba2a\b|agent-to-agent|agent\s+to\s+agent/i.test(allText);
+  const hasSubAgents =
+    /\bsub-?agent|chain(?:ed|s|ing)?\s+tool|spawn(?:s|ed|ing)?\s+(?:a\s+)?(?:sub-?)?agent|delegate[sd]?\s+to\s+(?:another\s+)?agent|tool\s+orchestrat/i.test(allText);
+  const hasCrossCustomer =
+    /\bmulti-?tenant|multi-?customer|shared\s+deployment|multiple\s+customers|multiple\s+tenants|cross-?tenant|cross-?customer/i.test(allText);
+
   const businessSystems = systems.filter(isBusinessSystem);
 
   const hasWriteOps = businessSystems.some((s) => s.writeOperations.length > 0);
@@ -256,6 +272,9 @@ export function detectSignals(
     hasInternationalTransfer,
     hasExternalProcessors,
     hasLargeScaleProcessing,
+    hasMCPOrA2A,
+    hasSubAgents,
+    hasCrossCustomer,
   };
 }
 
@@ -583,12 +602,20 @@ export function mapFindingsToRiskCategories(
   for (const mapping of Object.values(CONTROL_MAPPINGS) as ControlMapping[]) {
     if (!isFindingActive(mapping.findingType, signals)) continue;
 
-    // Per-control gating: drop EU AI Act controls tagged annexIII=true when
-    // the Annex III signal set does not fire for this finding type.
+    // Per-control gating:
+    //  - drop EU AI Act controls tagged annexIII=true when the Annex III
+    //    signal set does not fire for this finding type.
+    //  - drop controls tagged gatedBy=[...] when none of the named signals
+    //    are truthy (AIUC-1 architecture gating: MCP, sub-agents, multi-customer).
     const annexIIIOn = isAnnexIIIApplicableForFinding(mapping.findingType, signals);
     const applicableControls = mapping.controls.filter((ctrl) => {
       if (ctrl.frameworkId === 'eu-ai-act' && ctrl.annexIII === true) {
-        return annexIIIOn;
+        if (!annexIIIOn) return false;
+      }
+      if (ctrl.gatedBy && ctrl.gatedBy.length > 0) {
+        const sigBag = signals as unknown as Record<string, unknown>;
+        const anyOn = ctrl.gatedBy.some((sig) => sigBag[sig] === true);
+        if (!anyOn) return false;
       }
       return true;
     });

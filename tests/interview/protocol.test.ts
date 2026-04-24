@@ -59,7 +59,7 @@ describe('protocol', () => {
       q = protocol.nextQuestion();
     }
 
-    expect(questions.length).toBe(10); // 10 core questions
+    expect(questions.length).toBe(15); // 10 core + 5 AIUC-1 (AAP-44)
     for (let i = 1; i < questions.length; i++) {
       expect(questions[i].priority).toBeGreaterThanOrEqual(questions[i - 1].priority);
     }
