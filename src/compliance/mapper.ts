@@ -40,6 +40,7 @@ import type {
   RiskCategory,
 } from './types.js';
 import { MAPPING_VERSION } from './types.js';
+import { isBusinessSystem } from '../util/systems.js';
 
 // ─── Decision impact ────────────────────────────────────────────────────────
 
@@ -88,6 +89,16 @@ export interface ComplianceSignals {
   isEducationAssessmentContext: boolean; // Annex III §3
   isLawEnforcementContext: boolean;      // Annex III §6
   hasEssentialServicesSignal: boolean;   // Annex III §5
+
+  // ── AAP-43 P1: conditional GDPR rendering signals ──────────────────────
+  /** True if automated decisions affect people (regardless of impact tier). */
+  hasDecisionsAboutPeople: boolean;
+  /** Data likely crosses EU borders (transcript mentions transfer/US-based processor). */
+  hasInternationalTransfer: boolean;
+  /** Agent uses third-party SaaS processors (triggers Art. 28 DPA obligation). */
+  hasExternalProcessors: boolean;
+  /** Heuristic: >=3 business systems OR >=1 org-wide blast radius system. */
+  hasLargeScaleProcessing: boolean;
 }
 
 // EU AI Act Annex III §1 — biometric identification/categorisation/emotion recognition.
@@ -138,16 +149,7 @@ const ESSENTIAL_SERVICES_PATTERN = new RegExp(
   'i',
 );
 
-function isBusinessSystem(s: SystemAssessment): boolean {
-  const id = s.systemId.toLowerCase();
-  if (/\bheron\b/.test(id)) return false;
-  if (/internal\s*(orchestrat|api|platform)/.test(id)) return false;
-  if (/interview\s*(platform|endpoint|api)/.test(id)) return false;
-  if (/audit\s*(platform|endpoint|api)/.test(id)) return false;
-  if (/platform.?session.?token/i.test(id) && s.scopesRequested.length === 0)
-    return false;
-  return true;
-}
+// isBusinessSystem lives in src/util/systems.ts (shared across report, analyzer, mapper).
 
 export function detectSignals(
   systems: SystemAssessment[],
@@ -179,7 +181,12 @@ export function detectSignals(
     /\b(data|record|information|system|care|provider)\b/i.test(allText);
   const hasHealth = hasMedicalTerms || hasHealthInContext;
 
-  const hasEmploymentDecisions = /\b(hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?)\b/i.test(
+  // AAP-43 P1 #4: employment-decision signal must be gated on the explicit
+  // `decidesAboutPeople` interview flag. A regex-only match on transcript
+  // words like "employer" or "candidate" fired Annex III §4 on agents that
+  // never made employment decisions (e.g. curriculum-generation agents).
+  const employmentRegex = /\b(hir(e|ing)?|recruit(er|ing)?|employ(ee|er|ment)?|candidates?|resumes?|applicants?)\b/i;
+  const hasEmploymentDecisions = decidesAboutPeople && employmentRegex.test(
     (decisionMakingDetails ?? '') + ' ' + allText,
   );
 
@@ -212,6 +219,21 @@ export function detectSignals(
     decisionMakingDetails,
   );
 
+  // AAP-43 P1 #3: conditional GDPR signals
+  const hasDecisionsAboutPeople = decidesAboutPeople && decisionImpact !== 'none';
+
+  const transferRegex = /\b(transfer(s|red|ring)?|cross.?border|international(ly)?|outside.?(the.?)?(eu|eea)|US.?based.?(service|provider|processor)|third.?country)\b/i;
+  const hasInternationalTransfer =
+    transferRegex.test(allText) ||
+    // Any business system that is a well-known US-based SaaS → likely cross-border.
+    businessSystems.some((s) => /\b(google|apify|openai|anthropic|telegram|slack|stripe|hubspot|salesforce|vercel|aws|azure|gcp|github|linear)\b/i.test(s.systemId));
+
+  const hasExternalProcessors = businessSystems.length > 0;
+
+  const hasLargeScaleProcessing =
+    businessSystems.length >= 3 ||
+    businessSystems.some((s) => s.blastRadius === 'org-wide' || s.blastRadius === 'cross-tenant');
+
   return {
     hasSensitivePII,
     hasPublicPII,
@@ -230,6 +252,10 @@ export function detectSignals(
     isEducationAssessmentContext,
     isLawEnforcementContext,
     hasEssentialServicesSignal,
+    hasDecisionsAboutPeople,
+    hasInternationalTransfer,
+    hasExternalProcessors,
+    hasLargeScaleProcessing,
   };
 }
 
@@ -376,6 +402,12 @@ export interface CategorizedCompliance {
    * single-entry EU AI Act display (replaces the old two-entry split).
    */
   euAiActClassification: EUAIActClassificationResult;
+  /**
+   * AAP-43 P1: detected signals exposed so renderers can gate conditional
+   * content (e.g. GDPR obligations table rows, regulatory overall status).
+   * Read-only snapshot of the signals that produced the flags above.
+   */
+  signals: ComplianceSignals;
 }
 
 function emptyBucket(): CategorizedBucket {
@@ -611,5 +643,6 @@ export function mapFindingsToRiskCategories(
     frameworksActivated: [...activated],
     all,
     euAiActClassification,
+    signals,
   };
 }

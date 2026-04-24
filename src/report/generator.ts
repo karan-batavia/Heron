@@ -1,10 +1,11 @@
-import type { AuditReport, DataQuality, QAPair } from './types.js';
+import type { AuditReport, DataQuality, QAPair, SystemAssessment } from './types.js';
 import type { InterviewSession } from '../interview/interviewer.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
-import { computeRiskScore } from '../analysis/risk-scorer.js';
+import { computeRiskScore, applySeverityOverrides } from '../analysis/risk-scorer.js';
 import { renderMarkdownReport } from './templates.js';
 import type { LLMClient } from '../llm/client.js';
 import * as logger from '../util/logger.js';
+import { isProvided } from '../util/provided.js';
 import {
   mapFindingsToRiskCategories,
 } from '../compliance/mapper.js';
@@ -29,7 +30,14 @@ export async function generateReport(
   options: GenerateReportOptions,
 ): Promise<ReportResult> {
   // 1. Analyze transcript with LLM
-  const analysis = await analyzeTranscript(llmClient, session.transcript);
+  const analysis = await analyzeTranscript(llmClient, session.transcript, session.id);
+
+  // 1b. AAP-43: apply deterministic severity floor to LLM-assigned risk labels
+  analysis.risks = applySeverityOverrides(
+    analysis.risks,
+    analysis.systems,
+    analysis.makesDecisionsAboutPeople,
+  );
 
   // 2. Compute risk score from structured per-system data
   const riskScore = computeRiskScore(analysis.systems, analysis.risks);
@@ -56,7 +64,7 @@ export async function generateReport(
     recommendation: analysis.recommendation,
     overallRiskLevel: riskScore.overall,
     transcript: session.transcript,
-    dataQuality: computeDataQualityFromTranscript(session.transcript),
+    dataQuality: computeDataQualityFromTranscript(session.transcript, analysis.systems),
     makesDecisionsAboutPeople: analysis.makesDecisionsAboutPeople,
     decisionMakingDetails: analysis.decisionMakingDetails,
     compliance,
@@ -82,7 +90,10 @@ export async function generateReport(
 // result in AuditReport.compliance (StructuredCompliance / CategorizedCompliance).
 
 /** Compute data quality metrics from the interview transcript (CLI path) */
-function computeDataQualityFromTranscript(transcript: QAPair[]): DataQuality {
+function computeDataQualityFromTranscript(
+  transcript: QAPair[],
+  systems?: SystemAssessment[],
+): DataQuality {
   const totalQuestions = transcript.length;
   const repeatedAnswers = transcript.filter(qa => qa.answer.startsWith('[REPEATED RESPONSE]')).length;
   const greetingCount = transcript.filter(qa =>
@@ -117,7 +128,32 @@ function computeDataQualityFromTranscript(transcript: QAPair[]): DataQuality {
 
   const fieldScore = (fieldsProvided.length / Object.keys(fieldChecks).length) * 100;
   const repeatPenalty = (repeatedAnswers / Math.max(totalQuestions, 1)) * 50;
-  const score = Math.max(0, Math.min(100, Math.round(fieldScore - repeatPenalty)));
+
+  // AAP-43 P1 #6: penalize NOT_PROVIDED fields in the extracted systems.
+  // Regex-only scoring showed 100/100 even when the Systems & Access table
+  // was full of "NOT PROVIDED" because keywords existed in the transcript
+  // but weren't captured by the LLM. 8 points per missing compliance field,
+  // capped at 50.
+  const notProvidedPenalty = systems ? computeNotProvidedPenalty(systems) : 0;
+
+  const score = Math.max(0, Math.min(100, Math.round(fieldScore - repeatPenalty - notProvidedPenalty)));
 
   return { score, uniqueAnswers, totalQuestions, fieldsProvided, fieldsMissing, repeatedAnswers };
+}
+
+/**
+ * Count extraction gaps in SystemAssessment data and convert to a quality
+ * penalty. Each unprovided compliance field costs 8 points (capped at 50).
+ */
+function computeNotProvidedPenalty(systems: SystemAssessment[]): number {
+  let gaps = 0;
+  for (const s of systems) {
+    if (!isProvided(s.dataSensitivity)) gaps++;
+    if (!isProvided(s.frequencyAndVolume)) gaps++;
+    if (s.scopesRequested.length === 0 || !s.scopesRequested.some(isProvided)) gaps++;
+    for (const w of s.writeOperations) {
+      if (!isProvided(w.volumePerDay)) gaps++;
+    }
+  }
+  return Math.min(50, gaps * 8);
 }

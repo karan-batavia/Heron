@@ -14,6 +14,8 @@ export interface InterviewSession {
   startedAt: Date;
   completedAt: Date;
   questionsAsked: number;
+  /** Optional session identifier — used to derive deterministic LLM seed. */
+  id?: string;
 }
 
 /**

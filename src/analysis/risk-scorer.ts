@@ -175,3 +175,113 @@ function scoreToLevel(score: number): Severity {
   if (score <= 70) return 'high';
   return 'critical';
 }
+
+// ─── Rule-based severity override (AAP-43 P0 determinism) ──────────────────
+
+const SEVERITY_ORDER: Record<Severity, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+};
+
+function maxSeverity(a: Severity, b: Severity): Severity {
+  return SEVERITY_ORDER[a] >= SEVERITY_ORDER[b] ? a : b;
+}
+
+export interface SeveritySignals {
+  hasSensitivePII: boolean;
+  hasIrreversibleWrites: boolean;
+  hasExcessivePerms: boolean;
+  hasOrgWideWrites: boolean;
+  hasDecisionsAboutPeople: boolean;
+}
+
+/**
+ * Aggregate deterministic signals from structured per-system data.
+ * Used to compute severity floors so per-risk labels are stable across LLM runs.
+ */
+export function computeSeveritySignals(
+  systems: SystemAssessment[],
+  makesDecisionsAboutPeople?: boolean,
+): SeveritySignals {
+  const hasSensitivePII = systems.some(s => {
+    const text = s.dataSensitivity.toLowerCase();
+    return SENSITIVE_KEYWORDS.some(k => text.includes(k));
+  });
+
+  const hasIrreversibleWrites = systems.some(s =>
+    s.writeOperations.some(w => !w.reversible),
+  );
+
+  const hasExcessivePerms = systems.some(s => s.scopesDelta.length > 0);
+
+  const hasOrgWideWrites = systems.some(s => {
+    const broad = s.blastRadius === 'org-wide' || s.blastRadius === 'cross-tenant';
+    return broad && s.writeOperations.length > 0;
+  });
+
+  return {
+    hasSensitivePII,
+    hasIrreversibleWrites,
+    hasExcessivePerms,
+    hasOrgWideWrites,
+    hasDecisionsAboutPeople: Boolean(makesDecisionsAboutPeople),
+  };
+}
+
+type RiskKind = 'access' | 'write' | 'data' | 'decisions' | 'unknown';
+
+function inferRiskKind(risk: Risk): RiskKind {
+  const text = `${risk.title} ${risk.description}`.toLowerCase();
+  if (/decision|hiring|recruit|scoring|profil|rank|select.*people|access.control/.test(text)) return 'decisions';
+  if (/pii|personal|data.minim|retention|confidential|sensitive|health|financial/.test(text)) return 'data';
+  if (/write|send|create|delete|update|modify|post|irrevers/.test(text)) return 'write';
+  if (/scope|permission|access|oauth|excessive|over.?priv/.test(text)) return 'access';
+  return 'unknown';
+}
+
+/**
+ * Compute severity floor for a given risk kind, given aggregate signals.
+ * Returns the minimum acceptable severity — the final severity is
+ * MAX(LLM-assigned, floor) so senior-auditor insight isn't lost.
+ */
+function severityFloor(kind: RiskKind, signals: SeveritySignals): Severity {
+  const { hasSensitivePII, hasIrreversibleWrites, hasExcessivePerms, hasOrgWideWrites, hasDecisionsAboutPeople } = signals;
+
+  if (kind === 'decisions' && hasDecisionsAboutPeople) return 'high';
+
+  if (kind === 'access' && hasExcessivePerms && hasSensitivePII) return 'high';
+  if (kind === 'access' && hasExcessivePerms) return 'medium';
+
+  if (kind === 'write' && (hasOrgWideWrites || (hasIrreversibleWrites && hasSensitivePII))) return 'high';
+  if (kind === 'write' && hasIrreversibleWrites) return 'medium';
+
+  if (kind === 'data' && hasSensitivePII && (hasIrreversibleWrites || hasExcessivePerms)) return 'high';
+  if (kind === 'data' && hasSensitivePII) return 'medium';
+
+  return 'low';
+}
+
+/**
+ * Apply deterministic rule-based overrides to LLM-assigned risk severities.
+ *
+ * Rationale (AAP-43 P0 #1): LLMs at temperature=0 still flip severity labels
+ * run-to-run because of MoE routing / float arithmetic / load-balancer hops.
+ * For compliance-audit use this is unacceptable (reviewers: "determinism isn't
+ * optional in audit"). We therefore compute a rule-based severity floor from
+ * structured signals and take MAX(LLM, floor). LLM senior-auditor intuition
+ * is preserved when it exceeds the floor; otherwise the floor holds.
+ */
+export function applySeverityOverrides(
+  risks: Risk[],
+  systems: SystemAssessment[],
+  makesDecisionsAboutPeople?: boolean,
+): Risk[] {
+  const signals = computeSeveritySignals(systems, makesDecisionsAboutPeople);
+  return risks.map(risk => {
+    const kind = inferRiskKind(risk);
+    const floor = severityFloor(kind, signals);
+    return { ...risk, severity: maxSeverity(risk.severity, floor) };
+  });
+}

@@ -2,7 +2,7 @@ import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { generateId } from '../util/id.js';
 import { createProtocol, isStaleAnswer, type InterviewProtocol } from '../interview/protocol.js';
 import { analyzeTranscript } from '../analysis/analyzer.js';
-import { computeRiskScore } from '../analysis/risk-scorer.js';
+import { computeRiskScore, applySeverityOverrides } from '../analysis/risk-scorer.js';
 import { mapFindingsToRiskCategories } from '../compliance/mapper.js';
 import { renderMarkdownReport } from '../report/templates.js';
 import type { LLMClient } from '../llm/client.js';
@@ -10,6 +10,7 @@ import type { AuditReport, DataQuality, QAPair } from '../report/types.js';
 import type { InterviewQuestion } from '../interview/questions.js';
 import * as logger from '../util/logger.js';
 import { diffReports } from '../diff/differ.js';
+import { isProvided } from '../util/provided.js';
 
 export type SessionStatus = 'interviewing' | 'analyzing' | 'complete' | 'error';
 
@@ -246,8 +247,14 @@ export class SessionManager {
 
     try {
       const transcript = session.protocol.getTranscript();
-      const dataQuality = computeDataQuality(transcript);
-      const analysis = await analyzeTranscript(this.llmClient, transcript);
+      const analysis = await analyzeTranscript(this.llmClient, transcript, session.id);
+      analysis.risks = applySeverityOverrides(
+        analysis.risks,
+        analysis.systems,
+        analysis.makesDecisionsAboutPeople,
+      );
+      // AAP-43 P1 #6: compute DQ AFTER analysis so we can penalize extracted NOT_PROVIDED
+      const dataQuality = computeDataQuality(transcript, analysis.systems);
       const riskScore = computeRiskScore(analysis.systems, analysis.risks);
       const compliance = mapFindingsToRiskCategories({
         systems: analysis.systems,
@@ -338,7 +345,10 @@ export class SessionManager {
 // ─── Data Quality Computation ────────────────────────────────────────────────
 
 /** Compute data quality metrics from the interview transcript */
-function computeDataQuality(transcript: QAPair[]): DataQuality {
+function computeDataQuality(
+  transcript: QAPair[],
+  systems?: import('../report/types.js').SystemAssessment[],
+): DataQuality {
   const totalQuestions = transcript.length;
 
   // Count repeated/canned answers
@@ -378,10 +388,26 @@ function computeDataQuality(transcript: QAPair[]): DataQuality {
     }
   }
 
-  // Score: percentage of fields provided, penalized by repeats
+  // Score: percentage of fields provided, penalized by repeats + extraction gaps
   const fieldScore = (fieldsProvided.length / Object.keys(fieldChecks).length) * 100;
   const repeatPenalty = (repeatedAnswers / Math.max(totalQuestions, 1)) * 50;
-  const score = Math.max(0, Math.min(100, Math.round(fieldScore - repeatPenalty)));
+
+  // AAP-43 P1 #6: penalty for NOT_PROVIDED fields in extracted systems
+  let notProvidedPenalty = 0;
+  if (systems) {
+    let gaps = 0;
+    for (const s of systems) {
+      if (!isProvided(s.dataSensitivity)) gaps++;
+      if (!isProvided(s.frequencyAndVolume)) gaps++;
+      if (s.scopesRequested.length === 0 || !s.scopesRequested.some(isProvided)) gaps++;
+      for (const w of s.writeOperations) {
+        if (!isProvided(w.volumePerDay)) gaps++;
+      }
+    }
+    notProvidedPenalty = Math.min(50, gaps * 8);
+  }
+
+  const score = Math.max(0, Math.min(100, Math.round(fieldScore - repeatPenalty - notProvidedPenalty)));
 
   return {
     score,

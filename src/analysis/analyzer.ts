@@ -1,8 +1,11 @@
 import type { LLMClient } from '../llm/client.js';
+import { seedFromSessionId } from '../llm/client.js';
 import type { QAPair, AccessAssessment, DataNeed, Risk, SystemAssessment } from '../report/types.js';
 import { analysisResultSchema, type AnalysisResult, type Recommendation } from '../report/types.js';
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisPrompt } from '../llm/prompts.js';
 import * as logger from '../util/logger.js';
+import { scrubUnprovided } from '../util/provided.js';
+import { isBusinessSystem } from '../util/systems.js';
 
 // Extended result that includes both new per-system data and legacy flat fields
 export interface FullAnalysisResult extends AnalysisResult {
@@ -18,18 +21,20 @@ export interface FullAnalysisResult extends AnalysisResult {
 export async function analyzeTranscript(
   llmClient: LLMClient,
   transcript: QAPair[],
+  sessionId?: string,
 ): Promise<FullAnalysisResult> {
   // Note: caller shows "⏳ Analyzing transcript..." already
 
   const prompt = buildAnalysisPrompt(transcript);
+  const seed = sessionId ? seedFromSessionId(sessionId) : undefined;
 
   // Attempt 1
-  let parsed = await tryParse(llmClient, prompt);
+  let parsed = await tryParse(llmClient, prompt, seed);
 
   // Attempt 2 (retry) if first attempt failed
   if (!parsed) {
     logger.warn('First analysis attempt failed, retrying...');
-    parsed = await tryParse(llmClient, prompt);
+    parsed = await tryParse(llmClient, prompt, seed);
   }
 
   // Double failure — partial report fallback
@@ -44,12 +49,67 @@ export async function analyzeTranscript(
   return enrichWithLegacyFields(parsed);
 }
 
+const ORCHESTRATION_ONLY_PATTERN =
+  /\b(local\s*(filesystem|file.?system|disk|storage|log|sqlite|database|db|cache|store)|\.env\b|env(ironment)?\s*(var|variable|file)|idempotency|secrets?\s*manager)\b/i;
+
+const SCOPE_CREEP_RISK_PATTERN = /\b(scope|permission|oauth|excessive|over.?priv|least.?privilege|access.?control)/i;
+
+/**
+ * Return true when a risk is scoped only to orchestration components
+ * (e.g. "Local filesystem log has excessive scope") and mentions no real
+ * business system. Used to drop "template pollution" risks.
+ */
+function isRiskAboutOrchestrationOnly(
+  risk: { title: string; description: string },
+  businessSystemIds: Set<string>,
+): boolean {
+  const text = `${risk.title} ${risk.description}`.toLowerCase();
+  const mentionsOrchestration = ORCHESTRATION_ONLY_PATTERN.test(text);
+  if (!mentionsOrchestration) return false;
+  const mentionsBusinessSystem = Array.from(businessSystemIds).some((id) =>
+    id.length > 3 && text.includes(id),
+  );
+  if (mentionsBusinessSystem) return false;
+  // Only drop scope-creep/access risks; keep e.g. secrets-handling recommendations
+  return SCOPE_CREEP_RISK_PATTERN.test(text);
+}
+
+/**
+ * Recursively walk a parsed JSON object and normalize any "NOT PROVIDED"-style
+ * string values to `undefined`. Leaves other types untouched. Mutates in place.
+ */
+function scrubNotProvidedInPlace(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (typeof item === 'string') {
+        if (scrubUnprovided(item) === undefined) value[i] = undefined;
+      } else if (item && typeof item === 'object') {
+        scrubNotProvidedInPlace(item);
+      }
+    }
+    return;
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      const v = obj[key];
+      if (typeof v === 'string') {
+        if (scrubUnprovided(v) === undefined) obj[key] = undefined;
+      } else if (v && typeof v === 'object') {
+        scrubNotProvidedInPlace(v);
+      }
+    }
+  }
+}
+
 async function tryParse(
   llmClient: LLMClient,
   prompt: string,
+  deterministicSeed?: number,
 ): Promise<AnalysisResult | null> {
   try {
-    const response = await llmClient.chat(ANALYSIS_SYSTEM_PROMPT, prompt);
+    const response = await llmClient.chat(ANALYSIS_SYSTEM_PROMPT, prompt, { deterministicSeed });
 
     // Strip markdown fences if present
     let jsonStr = response.trim();
@@ -67,8 +127,25 @@ async function tryParse(
 
     const raw = JSON.parse(jsonStr);
 
+    // AAP-43 P0 #2: scrub "NOT PROVIDED" sentinel from LLM output before Zod
+    // default substitution. This distinguishes "LLM explicitly wrote NOT
+    // PROVIDED" from "field was absent" — both are normalized to undefined so
+    // Zod's .default() applies uniformly and the renderer can surface an
+    // explicit "Unknown — ask deployer" marker instead of leaking the string.
+    scrubNotProvidedInPlace(raw);
+
     // Zod validation — parse with defaults and coercion
     const result = analysisResultSchema.parse(raw);
+
+    // AAP-43 P2 #8: drop scope-creep / excessive-access risks that reference
+    // only internal/orchestration components (local filesystem, SQLite, env
+    // vars, etc.). The prompt tells the LLM not to do this, but some models
+    // still emit them — this is the belt-and-braces guarantee.
+    const businessSystemIds = new Set(
+      result.systems.filter(isBusinessSystem).map((s) => s.systemId.toLowerCase()),
+    );
+    result.risks = result.risks.filter((r) => !isRiskAboutOrchestrationOnly(r, businessSystemIds));
+
     return result;
   } catch (e) {
     logger.warn(`Parse attempt failed: ${e instanceof Error ? e.message : String(e)}`);

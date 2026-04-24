@@ -1,7 +1,13 @@
 import type { QAPair } from '../report/types.js';
 import type { LLMClient } from '../llm/client.js';
 import { getAllQuestionsSorted, type InterviewQuestion } from './questions.js';
-import { INTERVIEW_SYSTEM_PROMPT, buildFollowUpPrompt, COMPLIANCE_FIELD_CHECKLIST } from '../llm/prompts.js';
+import {
+  INTERVIEW_SYSTEM_PROMPT,
+  buildFollowUpPrompt,
+  COMPLIANCE_FIELD_CHECKLIST,
+  detectAdversarialClaim,
+  buildAdversarialProbePrompt,
+} from '../llm/prompts.js';
 
 export interface InterviewProtocol {
   /** Get the next question to ask, or null if interview is complete */
@@ -217,6 +223,11 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
   const transcript: QAPair[] = [];
   let globalFollowUpCount = 0;
   const followUpCountPerQuestion = new Map<string, number>();
+  // AAP-43 P3 #10/#11: limit adversarial probes per session so the
+  // conversation doesn't devolve into interrogation.
+  let adversarialProbeCount = 0;
+  const MAX_ADVERSARIAL_PROBES = 2;
+  const probedClaimKinds = new Set<string>();
   let repeatedAnswerCount = 0;
 
   // Follow-up queue
@@ -298,14 +309,28 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
       // Find missing compliance fields across all transcript
       const missingFields = findMissingFields(transcript);
 
-      // Only generate follow-up if answer was vague or compliance fields are missing
-      if (!vague && missingFields.length === 0) return null;
+      // AAP-43 P3: scan recent answers for adversarial-claim opportunities
+      // (HITL, narrow-scope claim, monitored, deletion policy, etc.). If
+      // one is detected and we haven't exhausted the per-session budget,
+      // prefer an adversarial probe over a generic vagueness follow-up.
+      const recentText = transcript.slice(-4).map((qa) => qa.answer).join(' \n ');
+      const adversarialClaim =
+        adversarialProbeCount < MAX_ADVERSARIAL_PROBES
+          ? detectAdversarialClaim(recentText)
+          : null;
+      const isNewClaim = adversarialClaim !== null && !probedClaimKinds.has(adversarialClaim.kind);
+
+      // Only generate follow-up if answer was vague, fields are missing,
+      // or a new adversarial claim was detected
+      if (!vague && missingFields.length === 0 && !isNewClaim) return null;
 
       try {
-        const followUpText = await llmClient.chat(
-          INTERVIEW_SYSTEM_PROMPT,
-          buildFollowUpPrompt(category, categoryQA, missingFields.length > 0 ? missingFields : undefined),
-        );
+        const prompt =
+          isNewClaim && adversarialClaim
+            ? buildAdversarialProbePrompt(adversarialClaim.kind, adversarialClaim.probe, categoryQA)
+            : buildFollowUpPrompt(category, categoryQA, missingFields.length > 0 ? missingFields : undefined);
+
+        const followUpText = await llmClient.chat(INTERVIEW_SYSTEM_PROMPT, prompt);
 
         if (!followUpText.trim()) return null;
 
@@ -313,9 +338,14 @@ export function createProtocol(llmClient: LLMClient, maxFollowUps = 6): Intervie
         if (lastCoreQ) {
           followUpCountPerQuestion.set(lastCoreQ.id, (followUpCountPerQuestion.get(lastCoreQ.id) ?? 0) + 1);
         }
+        if (isNewClaim && adversarialClaim) {
+          adversarialProbeCount++;
+          probedClaimKinds.add(adversarialClaim.kind);
+        }
 
+        const idPrefix = isNewClaim && adversarialClaim ? `probe_${adversarialClaim.kind}` : `followup_${category}`;
         const followUp: InterviewQuestion = {
-          id: `followup_${category}_${globalFollowUpCount}`,
+          id: `${idPrefix}_${globalFollowUpCount}`,
           category,
           text: followUpText.trim(),
           priority: 100 + globalFollowUpCount,
