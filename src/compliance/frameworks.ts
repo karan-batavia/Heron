@@ -5,9 +5,10 @@
  *   - frameworks.ts       — WHAT each framework is (name, tier, jurisdiction).
  *   - control-mappings.ts — WHICH controls a given finding activates.
  *
- * Scope (post-AAP-42 cut, 2026-04-23): 3 frameworks — EU AI Act, GDPR,
- * ISO/IEC 42001. EU AI Act is a single entry; high-risk (Annex III) status
- * is a classification stored per-audit rather than a separate framework.
+ * Scope (2026-04-24): 5 frameworks — 2 mandatory (EU AI Act, GDPR) + 3
+ * voluntary (ISO/IEC 42001, AIUC-1, NIST AI RMF). EU AI Act is a single
+ * entry; high-risk (Annex III) status is a classification stored per-audit
+ * rather than a separate framework.
  */
 
 import type { Framework, FrameworkId, Jurisdiction } from './types.js';
@@ -62,6 +63,13 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
     'https://www.aiuc-1.com/',
     'Agent-native compliance standard. Six domains: A Data & Privacy, B Security, C Safety, D Reliability, E Accountability, F Society.',
     'Quarterly releases (Jan/Apr/Jul/Oct 15). Pinned to 2026-04-15 (Q2-2026) release.',
+  ),
+  'nist-ai-rmf': voluntary(
+    'nist-ai-rmf',
+    'NIST AI RMF',
+    'https://www.nist.gov/itl/ai-risk-management-framework',
+    'US-origin voluntary AI risk-management framework. Four functions: GOVERN (org policies + accountability), MAP (context + risk identification), MEASURE (analyze + track risks), MANAGE (prioritize + respond).',
+    'AI RMF 1.0 (January 2023) + Generative AI Profile NIST-AI-600-1 (July 2024). Widely cited by US federal agencies (OMB M-24-10) and enterprise procurement.',
   ),
 };
 

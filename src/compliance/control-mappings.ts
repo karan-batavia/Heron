@@ -4,10 +4,12 @@
  * One entry per finding type. Each entry lists the controls that finding
  * activates across every registered framework.
  *
- * Scope (post-AAP-42 cut, 2026-04-23): EU AI Act, GDPR, ISO/IEC 42001.
+ * Scope (2026-04-24): EU AI Act, GDPR, ISO/IEC 42001, AIUC-1, NIST AI RMF.
  * EU AI Act controls tagged `annexIII: true` fire only when the system is
- * classified as high-risk (previously lived in a separate `eu-ai-act-high-risk`
- * framework entry that has now been merged into `eu-ai-act`).
+ * classified as high-risk (previously lived in a separate
+ * `eu-ai-act-high-risk` framework entry that has now been merged into
+ * `eu-ai-act`). AIUC-1 controls may additionally carry `gatedBy` for
+ * architecture-specific signal filtering.
  *
  * Mappings are INDICATIVE — they surface which framework clauses a finding
  * typically activates, not a certification that the controls are satisfied.
@@ -44,6 +46,11 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('aiuc-1', 'A003.4', 'Agent scopes bounded by least-privilege for its stated task.'),
       c('aiuc-1', 'B007', 'User-level access privileges enforced for every agent action.'),
       c('aiuc-1', 'B008.2', 'MCP / A2A interfaces require authentication, encrypted transport, and integrity protection.', { gatedBy: ['hasMCPOrA2A'] }),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'MAP 3.2', 'Map context of use — identify access scope.'),
+      c('nist-ai-rmf', 'GOVERN 6.1', 'Policies for organizational risk governance.'),
+      c('nist-ai-rmf', 'MEASURE 2.7', 'Evaluate AI system trustworthiness metrics.'),
+      c('nist-ai-rmf', 'MANAGE 1.2', 'Treat and respond to identified risks.'),
     ],
   },
 
@@ -63,6 +70,10 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('aiuc-1', 'D003', 'Restrict unsafe tool-calls: allowlist tools, validate arguments, refuse destructive ops without approval.'),
       c('aiuc-1', 'E015.2', 'Log every sub-agent and tool-call invocation with inputs, outputs, and principal.', { gatedBy: ['hasSubAgents'] }),
       c('aiuc-1', 'F001', 'Prevent cyber misuse: stop the agent from being used to harvest credentials, exfiltrate data, or launch attacks.'),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'MAP 3.5', 'Map risks from AI-induced actions and side-effects.'),
+      c('nist-ai-rmf', 'MANAGE 2.4', 'Manage residual risk from AI system operations.'),
+      c('nist-ai-rmf', 'GOVERN 1.7', 'Processes for escalating AI-driven actions.'),
     ],
   },
 
@@ -89,6 +100,10 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('aiuc-1', 'A002', 'Output data policy: govern retention, downstream sharing, and deletion.'),
       c('aiuc-1', 'A005', "Cross-customer isolation: one customer's data never leaks into another's session, cache, logs, or fine-tune set.", { gatedBy: ['hasCrossCustomer'] }),
       c('aiuc-1', 'A006', 'PII leakage prevention: redaction and output filtering for personal data.'),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'MEASURE 2.10', 'Privacy risk — measure and document impacts.'),
+      c('nist-ai-rmf', 'GOVERN 1.1', 'Policies for AI risk management established.'),
+      c('nist-ai-rmf', 'MAP 5.1', 'Likelihood and impact of privacy harms mapped.'),
     ],
   },
 
@@ -104,6 +119,10 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('eu-ai-act', 'Art. 72', 'Post-market monitoring plan (baseline reference).'),
       c('eu-ai-act', 'Art. 11', 'Technical documentation (baseline reference).'),
       c('gdpr', 'Art. 5(1)(b)', 'Purpose limitation.'),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'MEASURE 2.4', 'Measure scientific merit and scope of AI system.'),
+      c('nist-ai-rmf', 'MEASURE 3.1', 'Measure effectiveness of risk response.'),
+      c('nist-ai-rmf', 'MAP 1.6', 'Map intended and potential unintended uses.'),
     ],
   },
 
@@ -124,6 +143,10 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('eu-ai-act', 'Art. 9', 'Risk management system (high-risk).', { annexIII: true }),
       c('eu-ai-act', 'Art. 11', 'Technical documentation (high-risk).', { annexIII: true }),
       c('eu-ai-act', 'Art. 12', 'Record-keeping obligations (high-risk).', { annexIII: true }),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'GOVERN 1.1', 'Policies for AI risk management established.'),
+      c('nist-ai-rmf', 'MAP 4.1', 'Map organizational risk tolerance to AI risks.'),
+      c('nist-ai-rmf', 'GOVERN 3.2', 'Processes for regulatory compliance tracking.'),
     ],
   },
 
@@ -136,6 +159,9 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('iso-42001', 'Clause 6.1', 'Actions to address risks and opportunities.'),
       c('eu-ai-act', 'Art. 9(2)(b)', 'Risk management — estimation and evaluation (baseline).'),
       c('eu-ai-act', 'Art. 9(8)', 'Risk management system documented and up-to-date (baseline).'),
+      // ── NIST AI RMF (voluntary) — anchors the composite score methodology ──
+      c('nist-ai-rmf', 'MANAGE 1.2', 'Treat and respond to identified risks.'),
+      c('nist-ai-rmf', 'MEASURE 1.1', 'Identify and document AI risk measurement methods.'),
     ],
   },
 
@@ -164,6 +190,9 @@ export const CONTROL_MAPPINGS: Record<FindingType, ControlMapping> = {
       c('aiuc-1', 'C009', 'Real-time override: operator can halt or reverse agent decisions live.'),
       c('aiuc-1', 'E004', 'Assigned accountability: a named owner is responsible for agent behaviour.'),
       c('aiuc-1', 'E016', 'AI disclosure: inform affected persons that an AI agent is involved.'),
+      // ── NIST AI RMF (voluntary) ──
+      c('nist-ai-rmf', 'GOVERN 1.1', 'Policies for AI risk management established.'),
+      c('nist-ai-rmf', 'MAP 4.1', 'Map organizational risk tolerance to AI risks.'),
     ],
   },
 };

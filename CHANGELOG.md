@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added (2026-04-24) — NIST AI RMF restored
+
+- Restored voluntary framework `nist-ai-rmf` (NIST AI RMF 1.0 + Generative AI Profile NIST-AI-600-1). Cut in AAP-42 scope-reduction but restored here because it is the most widely-referenced voluntary AI risk-management framework in the US (cited in OMB M-24-10 and enterprise procurement).
+- 17 NIST controls mapped across all 6 active finding-types, covering all four core functions (GOVERN / MAP / MEASURE / MANAGE):
+  - `excessive-access`: MAP 3.2, GOVERN 6.1, MEASURE 2.7, MANAGE 1.2
+  - `write-risk`: MAP 3.5, MANAGE 2.4, GOVERN 1.7
+  - `sensitive-data`: MEASURE 2.10, GOVERN 1.1, MAP 5.1
+  - `scope-creep`: MEASURE 2.4, MEASURE 3.1, MAP 1.6
+  - `regulatory-flags`: GOVERN 1.1, MAP 4.1, GOVERN 3.2
+  - `risk-score`: MANAGE 1.2, MEASURE 1.1
+  - `decisions-about-people`: GOVERN 1.1, MAP 4.1
+- `FRAMEWORK_IDS` extended from 4 → 5. Registry now has 2 mandatory (EU AI Act, GDPR) + 3 voluntary (ISO/IEC 42001, AIUC-1, NIST AI RMF).
+- Applicability summary + `frameworkShortName` render NIST AI RMF in voluntary section. Methodology line lists it alongside the other anchors.
+- `MAPPING_VERSION` bumped to `nist-restore.2026-04-24`.
+
+### Fixed (2026-04-24)
+
+- Stale comment in `src/report/templates.ts` `getFrameworkBasis()` referenced `SOC 2 CC6.6` as an example output — SOC 2 was cut in AAP-42. Replaced with an EU AI Act example.
+- Stale comment in `src/report/types.ts` on `RegulatoryFlag.framework` referenced `"SOC 2 CC6.1"` as an example. Replaced with `"ISO/IEC 42001 A.6.2.6"`.
+
 ### Added (AAP-44, 2026-04-24) — AIUC-1 compliance framework
 
 - New voluntary framework `aiuc-1` (AIUC-1, Q2-2026 release pinned to 2026-04-15). Agent-native standard — six domains (A Data & Privacy, B Security, C Safety, D Reliability, E Accountability, F Society). Quarterly release cadence (Jan/Apr/Jul/Oct 15).

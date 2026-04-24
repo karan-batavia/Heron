@@ -7,25 +7,28 @@
  *   control-mappings.ts — finding → controls table
  *   mapper.ts           — signal detection + finding → flag projection
  *
- * Scope (post-scope-cut, 2026-04-23; + AIUC-1 added 2026-04-24):
+ * Scope (post-scope-cut 2026-04-23; + AIUC-1 added 2026-04-24; + NIST AI RMF
+ * restored 2026-04-24):
  *   - EU AI Act      (consolidated — single entry with Annex III classification scope)
  *   - GDPR
  *   - ISO/IEC 42001  (currently full standard; Annex-A-only subset planned)
  *   - AIUC-1         (agent-native standard, pinned to Q2-2026 release 2026-04-15)
+ *   - NIST AI RMF    (US-origin voluntary risk-management framework; GOVERN/MAP/MEASURE/MANAGE)
  *
  * Dropped from OSS v1 (kept in git history for restoration):
  *   - UK GDPR / DPA 2018
  *   - Colorado AI Act (SB 24-205)
  *   - HIPAA
  *   - CCPA / CPRA
- *   - NIST AI RMF
  *   - ISO/IEC 23894
  *   - SOC 2
  *   - eu-ai-act-high-risk (merged into eu-ai-act with per-control annexIII tag)
  *
- * Rationale: see Linear AAP-42. OSS v1 focuses on agent-native EU AI Act +
- * GDPR + (eventually) AIUC-1 verification. Jurisdiction-specific statutes and
- * general AI management frameworks move to the paid/cloud tier.
+ * Rationale: see Linear AAP-42 (scope cut) + AAP-44 (AIUC-1). NIST AI RMF was
+ * cut in AAP-42 but restored on user demand — it is the most widely-referenced
+ * voluntary AI risk-management framework in US enterprise procurement.
+ * Jurisdiction-specific statutes and general AI management frameworks move
+ * to the paid/cloud tier.
  *
  * Mappings are INDICATIVE — they surface which framework clauses a finding
  * typically activates, not a certification that the controls are satisfied.
@@ -56,6 +59,7 @@ export const FRAMEWORK_IDS = [
   // ── Voluntary / best-practice ────────────────────────────────────────────
   'iso-42001',
   'aiuc-1',
+  'nist-ai-rmf',
 ] as const;
 export type FrameworkId = (typeof FRAMEWORK_IDS)[number];
 
@@ -159,6 +163,7 @@ export interface ControlMapping {
  *   aap-42.2026-04-23 — AAP-42 scope cut: dropped 7 jurisdiction-specific / voluntary frameworks; consolidated EU AI Act split into single entry with Annex III classification
  *   aap-43.2026-04-24 — AAP-43 audit-quality pass: determinism, NOT_PROVIDED scrub, conditional GDPR, Annex III employment gating, overall-status label, adversarial probing
  *   aap-44.2026-04-24 — AAP-44 added AIUC-1 (Q2-2026 release, pinned to 2026-04-15); 16 controls across 4 finding-types; 3 new architecture signals (hasMCPOrA2A, hasSubAgents, hasCrossCustomer); per-control gatedBy filter
+ *   nist-restore.2026-04-24 — Restored NIST AI RMF as voluntary framework (widely-referenced US-origin AI risk-management framework); GOVERN/MAP/MEASURE/MANAGE controls across 6 finding-types
  */
-export const MAPPING_VERSION = 'aap-44.2026-04-24' as const;
-// build-cache-bust: 2026-04-24T00:00:00Z — AAP-44 AIUC-1 integration
+export const MAPPING_VERSION = 'nist-restore.2026-04-24' as const;
+// build-cache-bust: 2026-04-24T00:00:00Z — NIST AI RMF restoration

@@ -41,10 +41,10 @@ const tx = (answers: string[]): QAPair[] =>
 
 // ─── Registry shape ─────────────────────────────────────────────────────────
 
-describe('frameworks registry (post-AAP-44 — AIUC-1 added)', () => {
-  it('contains exactly the 4 v1 frameworks', () => {
+describe('frameworks registry (NIST AI RMF restored)', () => {
+  it('contains exactly the 5 v1 frameworks', () => {
     const ids = Object.keys(FRAMEWORKS).sort();
-    expect(ids).toEqual(['aiuc-1', 'eu-ai-act', 'gdpr', 'iso-42001']);
+    expect(ids).toEqual(['aiuc-1', 'eu-ai-act', 'gdpr', 'iso-42001', 'nist-ai-rmf']);
   });
 
   it('uses Jurisdiction[] for mandatoriness', () => {
@@ -55,13 +55,14 @@ describe('frameworks registry (post-AAP-44 — AIUC-1 added)', () => {
     expect(FRAMEWORKS.gdpr.mandatoryIn).toContain('EU');
     expect(FRAMEWORKS['iso-42001'].mandatoryIn).toEqual([]);
     expect(FRAMEWORKS['aiuc-1'].mandatoryIn).toEqual([]);
+    expect(FRAMEWORKS['nist-ai-rmf'].mandatoryIn).toEqual([]);
   });
 
   it('partitions cleanly into mandatory + voluntary', () => {
     const m = listMandatoryFrameworks().map((f) => f.id);
     const v = listVoluntaryFrameworks().map((f) => f.id).sort();
     expect(m).toEqual(expect.arrayContaining(['eu-ai-act', 'gdpr']));
-    expect(v).toEqual(['aiuc-1', 'iso-42001']);
+    expect(v).toEqual(['aiuc-1', 'iso-42001', 'nist-ai-rmf']);
     for (const id of m) expect(v).not.toContain(id);
   });
 
@@ -123,15 +124,47 @@ describe('AIUC-1 registration (AAP-44)', () => {
   });
 });
 
+// ─── NIST AI RMF restoration ────────────────────────────────────────────────
+
+describe('NIST AI RMF registration', () => {
+  it('is present and voluntary', () => {
+    expect(FRAMEWORKS).toHaveProperty('nist-ai-rmf');
+    const f = FRAMEWORKS['nist-ai-rmf'];
+    expect(f.tier).toBe('voluntary');
+    expect(f.mandatoryIn).toEqual([]);
+    expect(f.primarySource).toBe('https://www.nist.gov/itl/ai-risk-management-framework');
+  });
+
+  it('is listed in listVoluntaryFrameworks()', () => {
+    const ids = listVoluntaryFrameworks().map((f) => f.id);
+    expect(ids).toContain('nist-ai-rmf');
+  });
+
+  it('control-mappings reference NIST AI RMF across all 4 functions', () => {
+    const nistControls: string[] = [];
+    for (const mapping of Object.values(CONTROL_MAPPINGS)) {
+      for (const ctrl of mapping.controls) {
+        if (ctrl.frameworkId === 'nist-ai-rmf') nistControls.push(ctrl.controlId);
+      }
+    }
+    // At least one control per NIST function (GOVERN / MAP / MEASURE / MANAGE)
+    const functions = new Set<string>();
+    for (const id of nistControls) functions.add(id.split(' ')[0]);
+    expect(functions).toEqual(new Set(['GOVERN', 'MAP', 'MEASURE', 'MANAGE']));
+    // Spot-check: referenced on excessive-access finding (least-privilege anchor)
+    const excessiveAccess = CONTROL_MAPPINGS['excessive-access'].controls;
+    expect(excessiveAccess.some((c) => c.frameworkId === 'nist-ai-rmf')).toBe(true);
+  });
+});
+
 // ─── Deprecated frameworks fully removed ────────────────────────────────────
 
-describe('Removed frameworks (AAP-42 scope cut)', () => {
+describe('Removed frameworks (AAP-42 scope cut; NIST since restored)', () => {
   const removed = [
     'uk-gdpr-dpa-2018',
     'colorado-ai-act',
     'hipaa',
     'ccpa-cpra',
-    'nist-ai-rmf',
     'iso-23894',
     'soc-2',
     'eu-ai-act-high-risk',
