@@ -506,6 +506,7 @@ function renderApplicabilitySummary(c: StructuredCompliance): string {
 
   const voluntaryFrameworks: Array<{ id: string; name: string }> = [
     { id: 'iso-42001', name: 'ISO/IEC 42001' },
+    { id: 'aiuc-1', name: 'AIUC-1 (Q2-2026)' },
   ];
 
   // EU AI Act classification scope label — single line replaces the prior
@@ -614,6 +615,7 @@ function frameworkShortName(id: string): string {
     'eu-ai-act': 'EU AI Act',
     'gdpr': 'GDPR',
     'iso-42001': 'ISO 42001',
+    'aiuc-1': 'AIUC-1 (Q2-2026)',
   };
   return names[id] ?? id;
 }
@@ -724,7 +726,7 @@ export function renderStructuredCompliance(c: StructuredCompliance, report?: Aud
     ``,
     `### Methodology`,
     ``,
-    `Findings are anchored to EU AI Act 2024/1689, GDPR 2016/679, and ISO/IEC 42001 (AI management system). Mapping version: \`${c.mappingVersion}\`. EU AI Act is a single framework entry; Annex III high-risk obligations are surfaced as a classification scope label on that entry (replacing the prior two-entry split). Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
+    `Findings are anchored to EU AI Act 2024/1689, GDPR 2016/679, ISO/IEC 42001 (AI management system), and AIUC-1 (agent-native standard, pinned to Q2-2026 release 2026-04-15). Mapping version: \`${c.mappingVersion}\`. EU AI Act is a single framework entry; Annex III high-risk obligations are surfaced as a classification scope label on that entry (replacing the prior two-entry split). Control mappings are indicative — they show which framework clauses a finding typically activates and do not constitute legal advice.`,
     ``,
     renderApplicabilitySummary(c),
     ``,

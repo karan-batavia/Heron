@@ -28,8 +28,9 @@ function voluntary(
   name: string,
   primarySource: string,
   summary?: string,
+  scopeNote?: string,
 ): Framework {
-  return { id, name, tier: 'voluntary', mandatoryIn: [], primarySource, summary };
+  return { id, name, tier: 'voluntary', mandatoryIn: [], primarySource, summary, scopeNote };
 }
 
 // ─── Registry ───────────────────────────────────────────────────────────────
@@ -54,6 +55,13 @@ export const FRAMEWORKS: Record<FrameworkId, Framework> = {
     'ISO/IEC 42001',
     'https://www.iso.org/standard/81230.html',
     'AI management system standard. Annex A controls (A.5–A.9).',
+  ),
+  'aiuc-1': voluntary(
+    'aiuc-1',
+    'AIUC-1',
+    'https://www.aiuc-1.com/',
+    'Agent-native compliance standard. Six domains: A Data & Privacy, B Security, C Safety, D Reliability, E Accountability, F Society.',
+    'Quarterly releases (Jan/Apr/Jul/Oct 15). Pinned to 2026-04-15 (Q2-2026) release.',
   ),
 };
 

@@ -7,10 +7,11 @@
  *   control-mappings.ts — finding → controls table
  *   mapper.ts           — signal detection + finding → flag projection
  *
- * Scope (post-scope-cut, 2026-04-23):
+ * Scope (post-scope-cut, 2026-04-23; + AIUC-1 added 2026-04-24):
  *   - EU AI Act      (consolidated — single entry with Annex III classification scope)
  *   - GDPR
  *   - ISO/IEC 42001  (currently full standard; Annex-A-only subset planned)
+ *   - AIUC-1         (agent-native standard, pinned to Q2-2026 release 2026-04-15)
  *
  * Dropped from OSS v1 (kept in git history for restoration):
  *   - UK GDPR / DPA 2018
@@ -54,6 +55,7 @@ export const FRAMEWORK_IDS = [
   'gdpr',
   // ── Voluntary / best-practice ────────────────────────────────────────────
   'iso-42001',
+  'aiuc-1',
 ] as const;
 export type FrameworkId = (typeof FRAMEWORK_IDS)[number];
 
@@ -124,6 +126,14 @@ export interface FrameworkControl {
    * Consolidated here from the prior `eu-ai-act-high-risk` framework entry.
    */
   annexIII?: boolean;
+  /**
+   * Optional per-control signal gating. If provided, the control is rendered
+   * only when at least one of the named ComplianceSignals is truthy. Used for
+   * AIUC-1 controls that only apply in specific architectures (e.g. MCP,
+   * multi-customer, sub-agents). Keys are field names of ComplianceSignals;
+   * validation is runtime (in mapper.ts) to avoid a circular type import.
+   */
+  gatedBy?: string[];
 }
 
 /**
@@ -147,6 +157,7 @@ export interface ControlMapping {
  *   aap-30.2026-04-09 — initial AAP-30 mapping (ISO 23894, NIST AI RMF, EU AI Act, GDPR, SOC 2)
  *   aap-31.2026-04-15 — AAP-31 restored jurisdiction-specific frameworks (Colorado AI Act, HIPAA, CCPA/CPRA, UK GDPR/DPA 2018)
  *   aap-42.2026-04-23 — AAP-42 scope cut: dropped 7 jurisdiction-specific / voluntary frameworks; consolidated EU AI Act split into single entry with Annex III classification
+ *   aap-44.2026-04-24 — AAP-44 added AIUC-1 (Q2-2026 release, pinned to 2026-04-15); 16 controls across 4 finding-types; 3 new architecture signals (hasMCPOrA2A, hasSubAgents, hasCrossCustomer); per-control gatedBy filter
  */
-export const MAPPING_VERSION = 'aap-42.2026-04-23' as const;
-// build-cache-bust: 2026-04-23T13:34:52Z — AAP-42 scope cut
+export const MAPPING_VERSION = 'aap-44.2026-04-24' as const;
+// build-cache-bust: 2026-04-24T00:00:00Z — AAP-44 AIUC-1 integration
