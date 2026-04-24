@@ -2,8 +2,30 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import type { LLMConfig } from '../config/schema.js';
 
+export interface LLMChatOpts {
+  /**
+   * Stable integer seed for deterministic sampling. OpenAI and Gemini honor
+   * this; Anthropic ignores (no seed parameter as of 2026-04, greedy
+   * sampling at temperature=0 is the determinism guarantee instead).
+   */
+  deterministicSeed?: number;
+}
+
 export interface LLMClient {
-  chat(systemPrompt: string, userMessage: string): Promise<string>;
+  chat(systemPrompt: string, userMessage: string, opts?: LLMChatOpts): Promise<string>;
+}
+
+/**
+ * Hash an arbitrary session identifier into a stable 31-bit positive integer
+ * suitable for `seed` parameters. Deterministic across runs.
+ */
+export function seedFromSessionId(sessionId: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < sessionId.length; i++) {
+    hash ^= sessionId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash | 0);
 }
 
 class AnthropicLLMClient implements LLMClient {
@@ -15,10 +37,11 @@ class AnthropicLLMClient implements LLMClient {
     this.model = model;
   }
 
-  async chat(systemPrompt: string, userMessage: string): Promise<string> {
+  async chat(systemPrompt: string, userMessage: string, _opts?: LLMChatOpts): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 65536,
+      temperature: 0,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -42,9 +65,11 @@ class OpenAILLMClient implements LLMClient {
     this.model = model;
   }
 
-  async chat(systemPrompt: string, userMessage: string): Promise<string> {
+  async chat(systemPrompt: string, userMessage: string, opts?: LLMChatOpts): Promise<string> {
     const response = await this.client.chat.completions.create({
       model: this.model,
+      temperature: 0,
+      ...(opts?.deterministicSeed !== undefined ? { seed: opts.deterministicSeed } : {}),
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
@@ -64,9 +89,16 @@ class GeminiLLMClient implements LLMClient {
     this.model = model;
   }
 
-  async chat(systemPrompt: string, userMessage: string): Promise<string> {
-    // Use Gemini REST API directly to avoid extra dependency
+  async chat(systemPrompt: string, userMessage: string, opts?: LLMChatOpts): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+
+    const generationConfig: Record<string, unknown> = {
+      maxOutputTokens: 65536,
+      temperature: 0,
+    };
+    if (opts?.deterministicSeed !== undefined) {
+      generationConfig.seed = opts.deterministicSeed;
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -75,7 +107,7 @@ class GeminiLLMClient implements LLMClient {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 65536 },
+        generationConfig,
       }),
     });
 
