@@ -172,7 +172,7 @@ export type DataQuality = z.infer<typeof dataQualitySchema>;
 // ─── Regulatory Flags ──────────────────────────────────────────────────────
 
 export interface RegulatoryFlag {
-  framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "SOC 2 CC6.1"
+  framework: string;       // e.g. "EU AI Act", "GDPR Article 22", "ISO/IEC 42001 A.6.2.6"
   severity: 'info' | 'warning' | 'action-required' | 'clarification-needed';
   description: string;
   /** AAP-31: control IDs activated by this finding (optional for legacy flags). */
